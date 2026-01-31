@@ -1,0 +1,221 @@
+{
+  "apps": [
+    {
+      "id": "chrome",
+      "aliases": [
+        "chrome",
+        "google chrome",
+        "browser",
+        "the browser",
+        "my browser",
+        "chrome browser"
+      ],
+      "type": "exe",
+      "target": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "args": [],
+      "process": "chrome.exe"
+    },
+    {
+      "id": "opera",
+      "aliases": [
+        "opera",
+        "opera browser",
+        "the opera browser",
+        "my opera"
+      ],
+      "type": "exe",
+      "target": "C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Opera\\opera.exe",
+      "args": [],
+      "process": "opera.exe"
+    },
+    {
+      "id": "yandex_browser",
+      "aliases": [
+        "yandex",
+        "yandex browser",
+        "the yandex browser",
+        "my yandex",
+        "яндекс",
+        "яндекс браузер",
+        "браузер яндекс"
+      ],
+      "type": "exe",
+      "target": "C:\\Users\\%USERNAME%\\AppData\\Local\\Yandex\\YandexBrowser\\Application\\browser.exe",
+      "args": [],
+      "process": "browser.exe"
+    },
+    {
+      "id": "yandex_music",
+      "aliases": [
+        "yandex music",
+        "яндекс музыка",
+        "music",
+        "the music",
+        "my music",
+        "music player",
+        "open music"
+      ],
+      "type": "exe",
+      "target": "explorer.exe",
+      "args": ["shell:AppsFolder\\ru.yandex.desktop.music"],
+      "process": ""
+    },
+
+    {
+      "id": "telegram",
+      "aliases": [
+        "telegram",
+        "tg",
+        "telegram app",
+        "telegram desktop",
+        "my telegram",
+        "open telegram"
+      ],
+      "type": "exe",
+      "target": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe",
+      "args": [],
+      "process": "Telegram.exe"
+    },
+    {
+      "id": "discord",
+      "aliases": [
+        "discord",
+        "ds",
+        "discord app",
+        "my discord",
+        "open discord"
+      ],
+      "type": "exe",
+      "target": "C:\\Users\\%USERNAME%\\AppData\\Local\\Discord\\Update.exe",
+      "args": ["--processStart", "Discord.exe"],
+      "process": "Discord.exe"
+    },
+    {
+      "id": "spotify",
+      "aliases": [
+        "spotify",
+        "spotify app",
+        "music spotify",
+        "open spotify",
+        "play spotify"
+      ],
+      "type": "exe",
+      "target": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Spotify\\Spotify.exe",
+      "args": [],
+      "process": "Spotify.exe"
+    },
+    {
+      "id": "explorer",
+      "aliases": [
+        "explorer",
+        "file explorer",
+        "files",
+        "my files",
+        "show files",
+        "go to files",
+        "проводник",
+        "файлы"
+      ],
+      "type": "exe",
+      "target": "explorer.exe",
+      "args": [],
+      "process": "explorer.exe"
+    },
+    {
+      "id": "settings",
+      "aliases": [
+        "settings",
+        "windows settings",
+        "system settings",
+        "pc settings",
+        "open settings",
+        "go to settings",
+        "настройки",
+        "параметры"
+      ],
+      "type": "shell",
+      "target": "ms-settings:",
+      "process": ""
+    },
+    {
+      "id": "calculator",
+      "aliases": [
+        "calculator",
+        "calc",
+        "the calculator",
+        "calculator app",
+        "open calculator",
+        "калькулятор"
+      ],
+      "type": "exe",
+      "target": "calc.exe",
+      "args": [],
+      "process": "CalculatorApp.exe"
+    },
+    {
+      "id": "notepad",
+      "aliases": [
+        "notepad",
+        "notes",
+        "text editor",
+        "open notepad",
+        "open notes",
+        "блокнот",
+        "заметки"
+      ],
+      "type": "exe",
+      "target": "notepad.exe",
+      "args": [],
+      "process": "notepad.exe"
+    },
+    {
+      "id": "task_manager",
+      "aliases": [
+        "task manager",
+        "open task manager",
+        "show task manager",
+        "process manager",
+        "show processes",
+        "tasks",
+        "диспетчер задач"
+      ],
+      "type": "exe",
+      "target": "taskmgr.exe",
+      "args": [],
+      "process": "Taskmgr.exe"
+    },
+
+    {
+      "id": "vscode",
+      "aliases": [
+        "vscode",
+        "vs code",
+        "visual studio code",
+        "code",
+        "code editor",
+        "open vscode",
+        "open visual studio code",
+        "start coding"
+      ],
+      "type": "exe",
+      "target": "C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+      "args": [],
+      "process": "Code.exe"
+    },
+    {
+      "id": "steam",
+      "aliases": [
+        "steam",
+        "steam app",
+        "steam client",
+        "my games",
+        "open steam",
+        "start steam"
+      ],
+      "type": "exe",
+      "target": "C:\\Program Files (x86)\\Steam\\Steam.exe",
+      "args": [],
+      "process": "steam.exe"
+    }
+  ]
+}

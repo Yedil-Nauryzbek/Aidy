@@ -1,0 +1,17 @@
+# Visual Studio
+.vs/
+bin/
+obj/
+*.user
+*.suo
+ECHO is on.
+# Python
+venv/
+__pycache__/
+*.pyc
+ECHO is on.
+# Logs
+*.log
+ECHO is on.
+# Large models
+vosk-model-*/

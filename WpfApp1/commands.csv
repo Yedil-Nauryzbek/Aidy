@@ -1,0 +1,248 @@
+
+command,intent
+volume up,volume up
+increase volume,volume up
+turn it up,volume up
+make it louder,volume up
+louder,volume up
+raise volume,volume up
+sound up,volume up
+audio up,volume up
+more volume,volume up
+too quiet,volume up
+cant hear it,volume up
+can't hear it,volume up
+
+volume down,volume down
+decrease volume,volume down
+turn it down,volume down
+make it quieter,volume down
+quieter,volume down
+lower volume,volume down
+reduce volume,volume down
+sound down,volume down
+less volume,volume down
+too loud,volume down
+
+brightness up,brightness up
+increase brightness,brightness up
+make screen brighter,brightness up
+brighten screen,brightness up
+turn up brightness,brightness up
+raise brightness,brightness up
+screen too dark,brightness up
+too dark,brightness up
+
+brightness down,brightness down
+decrease brightness,brightness down
+dim screen,brightness down
+make screen darker,brightness down
+turn down brightness,brightness down
+lower brightness,brightness down
+reduce brightness,brightness down
+too bright,brightness down
+
+shutdown,shutdown
+shut down pc,shutdown
+power off,shutdown
+turn computer off,shutdown
+shut it down,shutdown
+system shutdown,shutdown
+
+restart,restart
+restart pc,restart
+restart computer,restart
+reboot,restart
+reboot system,restart
+
+lock,lock
+lock screen,lock
+lock pc,lock
+lock computer,lock
+secure computer,lock
+
+open cmd,open cmd
+open command prompt,open cmd
+command prompt,open cmd
+open terminal,open cmd
+terminal,open cmd
+cmd,open cmd
+
+show desktop,show desktop
+go to desktop,show desktop
+minimize all,show desktop
+hide windows,show desktop
+desktop view,show desktop
+
+screenshot,screenshot
+take screenshot,screenshot
+capture screen,screenshot
+screen capture,screenshot
+grab screen,screenshot
+
+task manager,task manager
+open task manager,task manager
+show task manager,task manager
+show processes,task manager
+process manager,task manager
+
+switch window,switch window
+switch app,switch window
+next window,switch window
+change window,switch window
+cycle windows,switch window
+
+open chrome,open app
+open google chrome,open app
+open browser,open app
+open the browser,open app
+start the browser,open app
+launch the browser,open app
+open my browser,open app
+launch chrome,open app
+start chrome,open app
+run chrome,open app
+
+open opera,open app
+open opera browser,open app
+open the opera browser,open app
+launch opera,open app
+start opera,open app
+run opera,open app
+
+open yandex,open app
+open yandex browser,open app
+open the yandex browser,open app
+open my yandex,open app
+launch yandex,open app
+start yandex browser,open app
+
+open yandex music,open app
+launch yandex music,open app
+start yandex music,open app
+run yandex music,open app
+open music,open app
+play music,open app
+start music,open app
+music,open app
+open my music,open app
+open the music,open app
+open music player,open app
+
+open spotify,open app
+launch spotify,open app
+start spotify,open app
+run spotify,open app
+play spotify,open app
+
+open telegram,open app
+open tg,open app
+launch telegram,open app
+launch tg,open app
+start telegram,open app
+start tg,open app
+run telegram,open app
+open telegram desktop,open app
+open my telegram,open app
+
+open discord,open app
+launch discord,open app
+start discord,open app
+run discord,open app
+open discord app,open app
+open my discord,open app
+
+open explorer,open app
+open file explorer,open app
+open files,open app
+launch explorer,open app
+start explorer,open app
+open my files,open app
+show files,open app
+go to files,open app
+
+open settings,open app
+open windows settings,open app
+launch settings,open app
+start settings,open app
+open system settings,open app
+open pc settings,open app
+go to settings,open app
+show settings,open app
+
+open calculator,open app
+open calc,open app
+launch calculator,open app
+start calculator,open app
+run calculator,open app
+open the calculator,open app
+
+open notepad,open app
+launch notepad,open app
+start notepad,open app
+run notepad,open app
+open text editor,open app
+open notes,open app
+
+open vscode,open app
+open visual studio code,open app
+open vs code,open app
+start coding,open app
+open code editor,open app
+
+open steam,open app
+launch steam,open app
+start steam,open app
+run steam,open app
+open steam app,open app
+start steam client,open app
+open my games,open app
+
+close yandex music,close app
+quit yandex music,close app
+exit yandex music,close app
+stop yandex music,close app
+close music,close app
+quit music,close app
+exit music,close app
+stop music,close app
+
+close spotify,close app
+quit spotify,close app
+exit spotify,close app
+stop spotify,close app
+
+close telegram,close app
+quit telegram,close app
+exit telegram,close app
+close tg,close app
+quit tg,close app
+
+close discord,close app
+quit discord,close app
+exit discord,close app
+
+close chrome,close app
+quit chrome,close app
+exit chrome,close app
+close browser,close app
+quit browser,close app
+
+close opera,close app
+quit opera,close app
+exit opera,close app
+
+close yandex browser,close app
+quit yandex browser,close app
+exit yandex browser,close app
+close yandex,close app
+quit yandex,close app
+
+close vscode,close app
+quit vscode,close app
+exit vscode,close app
+close visual studio code,close app
+
+close steam,close app
+quit steam,close app
+exit steam,close app

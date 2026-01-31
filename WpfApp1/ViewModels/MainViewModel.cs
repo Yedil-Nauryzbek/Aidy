@@ -1,0 +1,55 @@
+// WpfApp1/ViewModels/MainViewModel.cs
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using WpfApp1.Models;
+
+namespace WpfApp1.ViewModels
+{
+    public class MainViewModel : INotifyPropertyChanged
+    {
+        private string _statusText = "IDLE";
+        private string _lastCommand = "";              // <-- убрали "Ожидание..."
+        private AidyState _currentState = AidyState.Idle;
+
+        public string StatusText
+        {
+            get => _statusText;
+            set { _statusText = value; OnPropertyChanged(); }
+        }
+
+        public string LastCommand
+        {
+            get => _lastCommand;
+            set { _lastCommand = value; OnPropertyChanged(); }
+        }
+
+        public AidyState CurrentState
+        {
+            get => _currentState;
+            set
+            {
+                if (_currentState == value) return;
+                _currentState = value;
+                OnPropertyChanged();
+
+                StatusText = value switch
+                {
+                    AidyState.Idle => "IDLE",
+                    AidyState.Listening => "LISTENING…",
+                    AidyState.Processing => "PROCESSING…",
+                    AidyState.Speaking => "SPEAKING…",
+                    AidyState.Executing => "EXECUTING…",
+                    AidyState.Success => "SUCCESS",
+                    AidyState.Warning => "WARNING",
+                    AidyState.Error => "ERROR",
+                    AidyState.Offline => "OFFLINE",
+                    _ => "IDLE"
+                };
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
