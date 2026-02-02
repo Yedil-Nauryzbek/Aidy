@@ -1,7 +1,8 @@
-﻿import os
+import os
 import glob
 import random
 import ctypes
+import winsound
 from ctypes import wintypes
 
 import pyttsx3
@@ -17,6 +18,7 @@ def mci(cmd: str) -> int:
 
 
 def play_mp3_async(path: str, alias: str = "aidyvoice") -> bool:
+    # close previous track
     mci(f"close {alias}")
 
     p = path.replace('"', '\\"')
@@ -30,6 +32,23 @@ def play_mp3_async(path: str, alias: str = "aidyvoice") -> bool:
         return False
 
     return True
+
+
+def play_wav_async(path: str) -> bool:
+    try:
+        winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        return True
+    except Exception:
+        return False
+
+
+def play_audio_async(path: str, alias: str = "aidyvoice") -> bool:
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".wav":
+        return play_wav_async(path)
+    if ext == ".mp3":
+        return play_mp3_async(path, alias=alias)
+    return False
 
 
 class Voice:
@@ -55,32 +74,46 @@ class Voice:
                 self.engine.setProperty("voice", v.id)
                 break
 
-    def _pick_mp3(self, key: str) -> str | None:
-        exact = os.path.join(self.voice_dir, f"{key}.mp3")
-        if os.path.exists(exact):
-            return exact
+    def _pick_audio(self, key: str) -> str | None:
+        # 1) exact: WAV priority
+        exact_wav = os.path.join(self.voice_dir, f"{key}.wav")
+        if os.path.exists(exact_wav):
+            return exact_wav
 
-        pattern = os.path.join(self.voice_dir, f"{key}_*.mp3")
-        candidates = [p for p in glob.glob(pattern) if os.path.isfile(p)]
-        if not candidates:
-            return None
+        exact_mp3 = os.path.join(self.voice_dir, f"{key}.mp3")
+        if os.path.exists(exact_mp3):
+            return exact_mp3
 
-        return random.choice(candidates)
+        # 2) variants
+        wav_pattern = os.path.join(self.voice_dir, f"{key}_*.wav")
+        wavs = [p for p in glob.glob(wav_pattern) if os.path.isfile(p)]
+        if wavs:
+            return random.choice(wavs)
+
+        mp3_pattern = os.path.join(self.voice_dir, f"{key}_*.mp3")
+        mp3s = [p for p in glob.glob(mp3_pattern) if os.path.isfile(p)]
+        if mp3s:
+            return random.choice(mp3s)
+
+        return None
 
     def play_or_tts(self, key: str, fallback_text: str):
-        mp3 = self._pick_mp3(key)
+        audio_path = self._pick_audio(key)
+
         print(
             "VOICE KEY:", key,
-            "mp3:", mp3,
-            "exists:", bool(mp3 and os.path.exists(mp3)),
+            "file:", audio_path,
+            "exists:", bool(audio_path and os.path.exists(audio_path)),
             flush=True
         )
 
-        if mp3 and os.path.exists(mp3):
-            ok = play_mp3_async(mp3, alias="aidyvoice")
+        # 1) Try WAV/MP3
+        if audio_path and os.path.exists(audio_path):
+            ok = play_audio_async(audio_path, alias="aidyvoice")
             if ok:
                 return
 
+        # 2) TTS fallback (blocking)
         try:
             self.engine.say(fallback_text)
             self.engine.runAndWait()
