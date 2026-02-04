@@ -4,14 +4,16 @@ bin/
 obj/
 *.user
 *.suo
-ECHO is on.
+
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
-ECHO is on.
+
 # Logs
 *.log
-ECHO is on.
+
 # Large models
 vosk-model-*/
+WpfApp1/vosk_model.zip

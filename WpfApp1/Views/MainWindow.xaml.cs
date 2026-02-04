@@ -43,7 +43,7 @@ namespace WpfApp1.Views
             _vm.PropertyChanged += VmOnPropertyChanged;
 
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var scriptPath = Path.Combine(baseDir, "Aidy.py");
+            var scriptPath = Path.Combine(baseDir, "PythonCore", "main.py");
 
             _bridge = new PythonBridge(
                 pythonExe: "python",
@@ -51,7 +51,8 @@ namespace WpfApp1.Views
                 workingDir: baseDir
             );
 
-            _bridge.StateChanged += s => Dispatcher.Invoke(() => _vm.CurrentState = s);
+            _bridge.StateChanged += s => Dispatcher.Invoke(() => { _vm.CurrentState = s; Console.WriteLine($"[UI] State changed to {s}"); });
+            _bridge.LogLine += line => Dispatcher.Invoke(() => _vm.LogText += line + "\n");
 
             // Show last command, but hide internal/system keywords (exit, etc.)
             _bridge.CommandHeard += t => Dispatcher.Invoke(() =>
@@ -63,6 +64,7 @@ namespace WpfApp1.Views
             {
                 ShowPage("AIDY");
                 BuildAnimations();
+                _vm.CurrentState = AidyState.Starting;
                 ApplyState(_vm.CurrentState);
                 _bridge.Start();
             };
@@ -220,6 +222,9 @@ namespace WpfApp1.Views
             // ===== Ring storyboard by state =====
             switch (state)
             {
+                case AidyState.Starting:
+                    StartRing("SB_Ring_Idle");
+                    break;
                 case AidyState.Idle:
                     StartRing("SB_Ring_Idle");
                     break;
@@ -257,6 +262,12 @@ namespace WpfApp1.Views
             // ===== Wave / OuterGlow / Rotate behavior =====
             switch (state)
             {
+                case AidyState.Starting:
+                    Wave.BeginAnimation(OpacityProperty, _waveOff);
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowIdle);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowIdle);
+                    break;
                 case AidyState.Idle:
                     Wave.BeginAnimation(OpacityProperty, _waveOff);
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);

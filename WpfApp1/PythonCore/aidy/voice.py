@@ -16,11 +16,17 @@ def mci(cmd: str) -> int:
     return mciSendStringW(cmd, None, 0, None)
 
 
-def play_mp3_async(path: str, alias: str = "aidyvoice") -> bool:
+def play_audio_async(path: str, alias: str = "aidyvoice") -> bool:
     mci(f"close {alias}")
 
     p = path.replace('"', '\\"')
-    rc = mci(f'open "{p}" type mpegvideo alias {alias}')
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".wav":
+        media_type = "waveaudio"
+    else:
+        media_type = "mpegvideo"
+
+    rc = mci(f'open "{p}" type {media_type} alias {alias}')
     if rc != 0:
         return False
 
@@ -55,29 +61,33 @@ class Voice:
                 self.engine.setProperty("voice", v.id)
                 break
 
-    def _pick_mp3(self, key: str) -> str | None:
-        exact = os.path.join(self.voice_dir, f"{key}.mp3")
-        if os.path.exists(exact):
-            return exact
+    def _pick_audio(self, key: str) -> str | None:
+        exts = [".wav", ".mp3"]
+        for ext in exts:
+            exact = os.path.join(self.voice_dir, f"{key}{ext}")
+            if os.path.exists(exact):
+                return exact
 
-        pattern = os.path.join(self.voice_dir, f"{key}_*.mp3")
-        candidates = [p for p in glob.glob(pattern) if os.path.isfile(p)]
+        candidates = []
+        for ext in exts:
+            pattern = os.path.join(self.voice_dir, f"{key}_*{ext}")
+            candidates.extend([p for p in glob.glob(pattern) if os.path.isfile(p)])
+
         if not candidates:
             return None
-
         return random.choice(candidates)
 
     def play_or_tts(self, key: str, fallback_text: str):
-        mp3 = self._pick_mp3(key)
+        audio = self._pick_audio(key)
         print(
             "VOICE KEY:", key,
-            "mp3:", mp3,
-            "exists:", bool(mp3 and os.path.exists(mp3)),
+            "audio:", audio,
+            "exists:", bool(audio and os.path.exists(audio)),
             flush=True
         )
 
-        if mp3 and os.path.exists(mp3):
-            ok = play_mp3_async(mp3, alias="aidyvoice")
+        if audio and os.path.exists(audio):
+            ok = play_audio_async(audio, alias="aidyvoice")
             if ok:
                 return
 

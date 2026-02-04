@@ -3,6 +3,7 @@ namespace WpfApp1.Models
 {
     public enum AidyState
     {
+        Starting,    // app/core booting
         Idle,        // READY
         Listening,   // mic listening
         Processing,  // thinking/processing

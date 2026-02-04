@@ -13,6 +13,7 @@ def ui_command(text: str):
         print(f"COMMAND:{text}", flush=True)
 
 
+
 LOG_LEVEL = os.environ.get("AIDY_LOG", "INFO").upper()
 LEVELS = {"DEBUG": 10, "INFO": 20, "WARN": 30, "ERROR": 40}
 

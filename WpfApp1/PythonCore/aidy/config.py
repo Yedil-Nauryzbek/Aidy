@@ -3,6 +3,7 @@
 WAKE_KEYWORDS = {
     "aidy",
     "ady",
+    "hey",
     "hey aidy",
     "hey assistant",
     "hello assistant",

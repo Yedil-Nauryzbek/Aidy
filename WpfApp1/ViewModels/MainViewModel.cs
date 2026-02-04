@@ -7,14 +7,21 @@ namespace WpfApp1.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private string _statusText = "IDLE";
-        private string _lastCommand = "";              // <-- убрали "Ожидание..."
-        private AidyState _currentState = AidyState.Idle;
+        private string _statusText = "STARTING...";
+        private string _logText = "";
+        private string _lastCommand = "";
+        private AidyState _currentState = AidyState.Starting;
 
         public string StatusText
         {
             get => _statusText;
             set { _statusText = value; OnPropertyChanged(); }
+        }
+
+        public string LogText
+        {
+            get => _logText;
+            set { _logText = value; OnPropertyChanged(); }
         }
 
         public string LastCommand
@@ -34,11 +41,12 @@ namespace WpfApp1.ViewModels
 
                 StatusText = value switch
                 {
+                    AidyState.Starting => "STARTING...",
                     AidyState.Idle => "IDLE",
-                    AidyState.Listening => "LISTENING…",
-                    AidyState.Processing => "PROCESSING…",
-                    AidyState.Speaking => "SPEAKING…",
-                    AidyState.Executing => "EXECUTING…",
+                    AidyState.Listening => "LISTENING...",
+                    AidyState.Processing => "PROCESSING...",
+                    AidyState.Speaking => "SPEAKING...",
+                    AidyState.Executing => "EXECUTING...",
                     AidyState.Success => "SUCCESS",
                     AidyState.Warning => "WARNING",
                     AidyState.Error => "ERROR",
@@ -53,3 +61,4 @@ namespace WpfApp1.ViewModels
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
+
