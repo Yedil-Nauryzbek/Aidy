@@ -563,6 +563,7 @@
 
                                     </StackPanel>
 
+
                                     <!-- ===== Listening Orb ===== -->
                                     <Grid HorizontalAlignment="Center"
               VerticalAlignment="Top"
@@ -716,7 +717,7 @@
                                             <TextBlock Text="• Voice replies: MP3 (Assets/voice/*.mp3) → fallback TTS"
                        Foreground="{StaticResource TextPrimary}"
                        FontSize="15" Opacity="0.92" Margin="0,2,0,0"/>
-                                            <TextBlock Text="• UI states: Idle / Listening / Processing / Speaking / Executing / Success / Warning / Error / Offline"
+                                            <TextBlock Text="• UI states: Idle / Listening / Processing / Speaking / Executing / Finished / Warning / Error / Offline"
                        Foreground="{StaticResource TextPrimary}"
                        FontSize="15" Opacity="0.92" Margin="0,2,0,0"/>
 

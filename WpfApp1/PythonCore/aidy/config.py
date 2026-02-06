@@ -44,9 +44,95 @@ VAD_SILENCE_MS = 650
 
 DANGEROUS_INTENTS = {"shutdown", "restart"}
 
-CONFIRM_YES = {"yes", "confirm", "do it", "sure", "ok", "okay", "proceed"}
+CONFIRM_YES = {"yes", "confirm", "conferm", "confim", "confirmm", "do it", "sure", "ok", "okay", "proceed"}
 CONFIRM_NO = {"no", "no sir", "cancel", "stop", "don't", "do not", "never mind", "abort"}
 CONFIRM_GRAMMAR_PHRASES = sorted(CONFIRM_YES | CONFIRM_NO)
+
+REPEAT_PHRASES = {
+    "repeat",
+    "repeat that",
+    "repeat it",
+    "repeat last command",
+    "repeat last",
+    "do it again",
+    "again",
+    "repeet",
+    "repete",
+    "repit",
+    "repet",
+    "ripit",
+    "repet it",
+    "repeat it again",
+}
+
+CLOSE_ACTIVE_PHRASES = {
+    "close this",
+    "close it",
+    "close window",
+    "close current window",
+    "close current app",
+    "close current application",
+    "close active app",
+    "close active window",
+    "close this window",
+    "close this app",
+}
+
+MUTE_PHRASES = {
+    "mute",
+    "mute aidy",
+    "mute ady",
+    "mute eddie",
+    "mute edy",
+    "shut up",
+    "shut it",
+    "shutup",
+    "shat up",
+    "shut ap",
+    "shut op",
+    "shot up",
+}
+
+UNMUTE_PHRASES = {
+    "unmute",
+    "unmute aidy",
+    "unmute ady",
+    "unmute eddie",
+    "unmute edy",
+    "un mute",
+    "an mute",
+    "and mute",
+    "on mute",
+    "one mute",
+    "unmuted",
+    "unmoot",
+    "unmoot aidy",
+    "sound back",
+    "sound on",
+    "turn sound on",
+    "sound on",
+    "turn on sound",
+    "turn sound on",
+}
+
+UNDO_LAST_PHRASES = {
+    "undo",
+    "undo last",
+    "undo that",
+    "undo it",
+    "go back",
+    "revert",
+    "cancel that",
+}
+
+UNDO_ALL_PHRASES = {
+    "undo all",
+    "undo everything",
+    "undo all that",
+    "undo everything you did",
+    "undo all you did",
+    "undo the last actions",
+}
 
 
 WINDOW_SWITCH_LEFT = {"left", "previous", "back"}

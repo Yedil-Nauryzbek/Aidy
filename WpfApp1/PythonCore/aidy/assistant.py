@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import json
 import time
@@ -47,6 +47,15 @@ from .config import (
     VAD_START_THRESHOLD,
     VAD_SILENCE_MS,
     CONFIRM_GRAMMAR_PHRASES,
+    CONFIRM_YES,
+    CONFIRM_NO,
+    DANGEROUS_INTENTS,
+    REPEAT_PHRASES,
+    CLOSE_ACTIVE_PHRASES,
+    MUTE_PHRASES,
+    UNMUTE_PHRASES,
+    UNDO_LAST_PHRASES,
+    UNDO_ALL_PHRASES,
     WINDOW_SWITCH_GRAMMAR,
     WINDOW_SWITCH_LEFT,
     WINDOW_SWITCH_RIGHT,
@@ -63,6 +72,7 @@ from .apps import (
     find_app,
     launch_app,
     close_app,
+    close_app_by_process,
 )
 from .system import (
     run_powershell_hidden,
@@ -73,8 +83,13 @@ from .system import (
     parse_first_int,
     set_volume_percent,
     volume_steps,
+    get_active_window_info,
 )
 from .intent_api import start_local_intent_api, IntentAPI
+from .context import ContextManager, should_merge_context
+from .scheduler import TaskScheduler, Task
+from .delay import parse_delay_request
+from .action_history import ActionHistory, ActionRecord
 
 
 COMMANDS = {
@@ -127,7 +142,7 @@ def load_command_phrases(base_dir: str):
 
     if not phrases:
         phrases = set(COMMANDS.keys()) | {"volume up", "volume down"}
-        warn(f"No CSV dataset рядом с Aidy.py. Using {len(phrases)} phrases from built-ins.")
+        warn(f"No CSV dataset near Aidy.py. Using {len(phrases)} phrases from built-ins.")
     else:
         info(f"Command phrases loaded: {len(phrases)} (from {used_file})")
 
@@ -164,6 +179,8 @@ class Aidy:
             self.stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
 
     def _deafen_after_speak(self, ms: int | None = None):
+        if getattr(self.voice, "muted", False):
+            return
         if not self.stream:
             return
         if ms is None:
@@ -174,6 +191,9 @@ class Aidy:
         end = time.time() + (ms / 1000.0)
         while time.time() < end:
             self.stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+
+    def _sleep_success(self):
+        time.sleep(0.8 if self.voice.muted else 0.35)
 
     def __init__(self, base_dir: str | None = None):
         if base_dir:
@@ -206,7 +226,15 @@ class Aidy:
 
         self.command_phrases = load_command_phrases(self.base_dir)
         self.command_phrases = sorted(
-            set(self.command_phrases) | set(CONFIRM_GRAMMAR_PHRASES) | set(WINDOW_SWITCH_GRAMMAR)
+            set(self.command_phrases)
+            | set(CONFIRM_GRAMMAR_PHRASES)
+            | set(WINDOW_SWITCH_GRAMMAR)
+            | set(REPEAT_PHRASES)
+            | set(CLOSE_ACTIVE_PHRASES)
+            | set(MUTE_PHRASES)
+            | set(UNMUTE_PHRASES)
+            | set(UNDO_LAST_PHRASES)
+            | set(UNDO_ALL_PHRASES)
         )
 
         self.apps = load_apps_config(self.base_dir)
@@ -224,6 +252,16 @@ class Aidy:
 
         self.window_switch_active = False
         self.window_switch_silence_hits = 0
+        self.last_command_text = None
+        self._is_repeating = False
+        self.short_memory = {
+            "last_intent": None,
+            "args": None,
+            "status": None,
+        }
+        self.context_mgr = ContextManager(ttl_seconds=7.5, min_confidence=0.2, main_confidence=0.4)
+        self.scheduler = TaskScheduler(max_tasks=5, max_delay_seconds=3600)
+        self.history = ActionHistory(max_actions=20, chain_gap_seconds=5.0)
 
     def start_stream(self):
         if self.stream is not None:
@@ -342,6 +380,8 @@ class Aidy:
             else:
                 data = b'\x00' * (CHUNK_SAMPLES * 2)  # Mock silence data
 
+            self._handle_due_tasks()
+
             if self.wake_recognizer.AcceptWaveform(data):
                 r = json.loads(self.wake_recognizer.Result())
                 text = (r.get("text", "") or "").lower().strip()
@@ -362,8 +402,8 @@ class Aidy:
                     self._deafen_after_speak()
                     return
 
-    def listen_command_vosk(self, max_seconds=6, min_listen_ms=2000):
-        ui_state("LISTENING")
+    def listen_command_vosk(self, max_seconds=6, min_listen_ms=2000, ui_state_label="LISTENING"):
+        ui_state(ui_state_label)
         info("Command: listening...")
 
         rec = self._new_command_recognizer()
@@ -421,6 +461,644 @@ class Aidy:
         info(f"Heard: \"{best_final}\"")
         return best_final
 
+    def _set_last_command(self, text: str):
+        if self._is_repeating:
+            return
+        self.last_command_text = text
+
+    def _set_memory(self, intent: str, args: dict | None = None, status: str = "success"):
+        if self._is_repeating:
+            return
+        self.short_memory = {
+            "last_intent": intent,
+            "args": args or {},
+            "status": status,
+        }
+
+    def _set_context(self, intent: str, entities: dict | None = None):
+        if self._is_repeating:
+            return
+        self.context_mgr.set_context(intent, entities or {})
+
+    def _is_followup_phrase(self, text: str) -> bool:
+        t = (text or "").strip().lower()
+        t = " ".join(t.split())
+        if not t:
+            return False
+        words = t.split()
+        if len(words) > 4:
+            return False
+        linkers = {"è", "òåïåðü", "äàëüøå", "åù¸", "åùå"}
+        return any(w in linkers for w in words)
+
+    def _strip_linkers(self, text: str) -> str:
+        t = (text or "").strip().lower()
+        words = [w for w in t.split() if w not in {"è", "òåïåðü", "äàëüøå", "åù¸", "åùå"}]
+        return " ".join(words).strip()
+
+    def _apply_followup(self, ctx: dict, text: str, api_intent: str) -> bool:
+        ctx_intent = (ctx.get("last_intent") or "").strip().lower()
+        if not ctx_intent:
+            return False
+        if not should_merge_context(ctx_intent, api_intent):
+            return False
+
+        t = self._strip_linkers(text)
+        if not t:
+            return False
+
+        if ctx_intent == "open app":
+            app = find_app(self.apps, t)
+            if not app:
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("open_app", f"Opening {app['id']}")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            ok = launch_app(app)
+            if ok:
+                self._set_context("open app", {"app": app["id"]})
+                self._set_memory("open app", {"id": app["id"]})
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+            return False
+
+        if ctx_intent == "close app":
+            app = find_app(self.apps, t)
+            if not app:
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("close_app", f"Closing {app['id']}")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            ok = close_app(app)
+            if ok:
+                self._set_context("close app", {"app": app["id"]})
+                self._set_memory("close app", {"id": app["id"]})
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+            return False
+
+        return False
+
+    def _infer_intent_and_entities(self, text: str) -> tuple[str | None, dict]:
+        t0 = " ".join((text or "").lower().split())
+        if not t0:
+            return None, {}
+
+        if t0 in COMMANDS:
+            return t0, {}
+
+        if t0 in ("switch", "switch app", "switch window"):
+            return "switch window", {}
+
+        if t0.startswith(("close ", "quit ", "exit ", "kill ", "stop ")):
+            app_name = extract_close_app_name(t0)
+            app = find_app(self.apps, app_name)
+            if app:
+                return "close app", {"app": app["id"]}
+            return None, {}
+
+        if t0.startswith(("open ", "launch ", "start ", "run ")):
+            app_name = extract_app_name(t0)
+            app = find_app(self.apps, app_name)
+            if app:
+                return "open app", {"app": app["id"]}
+            return None, {}
+
+        if t0 in ("volume up", "sound up", "increase volume", "louder", "make it louder"):
+            return "volume up", {"steps": 6}
+        if t0 in ("volume down", "sound down", "decrease volume", "quieter", "make it quieter"):
+            return "volume down", {"steps": 6}
+
+        if t0 in ("brightness up", "increase brightness", "brighten screen", "make screen brighter"):
+            return "brightness up", {}
+        if t0 in ("brightness down", "decrease brightness", "dim screen", "make screen darker"):
+            return "brightness down", {}
+
+        result = self.api.get_intent(text)
+        if not result:
+            return None, {}
+        intent = (result.get("intent") or "").strip().lower()
+        confidence = float(result.get("confidence", 0) or 0)
+        if confidence < 0.4:
+            return None, {}
+
+        if intent == "open app":
+            app_name = extract_app_name(text)
+            app = find_app(self.apps, app_name)
+            if app:
+                return "open app", {"app": app["id"]}
+            return None, {}
+
+        if intent == "close app":
+            app_name = extract_close_app_name(text)
+            app = find_app(self.apps, app_name)
+            if app:
+                return "close app", {"app": app["id"]}
+            return None, {}
+
+        if intent in ("volume up", "volume down"):
+            n = parse_first_int(text)
+            if n is None:
+                return intent, {"steps": 6}
+            t = (text or "").lower()
+            wants_absolute = (" to " in f" {t} ") or ("%" in t) or ("percent" in t)
+            if wants_absolute:
+                return "set_volume", {"value": n}
+            return intent, {"steps": max(1, n)}
+
+        if intent == "switch window":
+            return "switch window", {}
+
+        if intent in COMMANDS:
+            return intent, {}
+
+        return None, {}
+
+    def _execute_intent(self, intent: str, entities: dict) -> bool:
+        if intent == "set_volume":
+            value = entities.get("value")
+            if value is None:
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("set_volume", f"Setting volume to {value} percent")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            ok = set_volume_percent(int(value))
+            if not ok:
+                volume_steps(up=True, steps=1)
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
+        if intent == "volume up":
+            steps = int(entities.get("steps") or 6)
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("volume_up", VOICE_RESPONSES.get("volume up", "Adjusting volume"))
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            volume_steps(up=True, steps=steps)
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
+        if intent == "volume down":
+            steps = int(entities.get("steps") or 6)
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Adjusting volume"))
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            volume_steps(up=False, steps=steps)
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
+        if intent == "open app":
+            app_id = (entities.get("app") or entities.get("id") or "").strip().lower()
+            app = find_app(self.apps, app_id)
+            if not app:
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("open_app", f"Opening {app['id']}")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            ok = launch_app(app)
+            if ok:
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+            return False
+
+        if intent == "close app":
+            app_id = (entities.get("app") or entities.get("id") or "").strip().lower()
+            app = find_app(self.apps, app_id)
+            if not app:
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("close_app", f"Closing {app['id']}")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            ok = close_app(app)
+            if ok:
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+            return False
+
+        if intent == "close active":
+            proc = (entities.get("process") or "").strip()
+            if not proc:
+                return False
+            proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("close_active", "Closing current app")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            ok = close_app_by_process(proc_name, force=False)
+            time.sleep(0.15)
+            ok2 = close_app_by_process(proc_name, force=True)
+            if ok or ok2:
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+            return False
+
+        if intent == "switch window":
+            ui_state("EXECUTING")
+            self.start_window_switch()
+            return True
+
+        if intent in COMMANDS:
+            response = VOICE_RESPONSES.get(intent, f"Executing {intent}")
+            ui_state("SPEAKING")
+            self.voice.play_or_tts(intent.replace(" ", "_"), response)
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            COMMANDS[intent]()
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
+        return False
+
+    def _inverse_for_action(self, intent: str, entities: dict) -> dict | None:
+        if intent == "open app":
+            app_id = (entities.get("app") or entities.get("id") or "").strip().lower()
+            if app_id:
+                return {"intent": "close app", "entities": {"app": app_id}}
+            return None
+
+        if intent == "close app":
+            app_id = (entities.get("app") or entities.get("id") or "").strip().lower()
+            if app_id:
+                return {"intent": "open app", "entities": {"app": app_id}}
+            return None
+
+        if intent == "volume up":
+            steps = int(entities.get("steps") or 6)
+            return {"intent": "volume down", "entities": {"steps": steps}}
+
+        if intent == "volume down":
+            steps = int(entities.get("steps") or 6)
+            return {"intent": "volume up", "entities": {"steps": steps}}
+
+        if intent == "brightness up":
+            return {"intent": "brightness down", "entities": {}}
+
+        if intent == "brightness down":
+            return {"intent": "brightness up", "entities": {}}
+
+        if intent == "mute":
+            return {"intent": "unmute", "entities": {}}
+
+        if intent == "unmute":
+            return {"intent": "mute", "entities": {}}
+
+        return None
+
+    def _record_action(self, intent: str, entities: dict):
+        inverse = self._inverse_for_action(intent, entities or {})
+        rec = ActionRecord(
+            id=0,
+            action_intent=intent,
+            entities=entities or {},
+            inverse_action=inverse,
+            timestamp=0,
+            chain_id=0,
+        )
+        self.history.push(rec)
+
+    def _undo_last(self) -> bool:
+        rec = self.history.get_last()
+        if not rec:
+            ui_state("WARNING")
+            self.voice.play_or_tts("not_sure", "Nothing to undo")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+        if not rec.inverse_action:
+            ui_state("WARNING")
+            self.voice.play_or_tts("not_sure", "I can't undo that")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+        inv = rec.inverse_action
+        ok = self._execute_intent(inv["intent"], inv.get("entities") or {})
+        if ok:
+            self.history.pop_last()
+            self.history.break_chain()
+        return ok
+
+    def _undo_chain(self) -> bool:
+        rec = self.history.get_last()
+        if not rec:
+            ui_state("WARNING")
+            self.voice.play_or_tts("not_sure", "Nothing to undo")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+        chain = self.history.get_chain(rec.chain_id)
+        if not chain:
+            ui_state("WARNING")
+            self.voice.play_or_tts("not_sure", "Nothing to undo")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+        for r in chain:
+            if not r.inverse_action:
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_sure", "I can't undo that")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+        for r in reversed(chain):
+            inv = r.inverse_action
+            if not inv:
+                return False
+            ok = self._execute_intent(inv["intent"], inv.get("entities") or {})
+            if not ok:
+                return False
+        self.history.pop_chain(rec.chain_id)
+        self.history.break_chain()
+        return True
+
+    def _confirm_and_schedule(self, intent: str, entities: dict, delay_seconds: int) -> bool:
+        ui_state("SPEAKING")
+        self.voice.play_or_tts("confirm", "Confirm or cancel.")
+        self._deafen_after_speak()
+
+        for attempt in range(2):
+            reply = self.listen_command_vosk(max_seconds=6, min_listen_ms=1200, ui_state_label="CONFIRM")
+            if not reply:
+                self.context_mgr.clear_context()
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+
+            t = " ".join(reply.lower().split())
+            if t in CONFIRM_YES:
+                task = Task(id=0, action_intent=intent, entities=entities, execute_at=0)
+                task_id = self.scheduler.schedule(task, delay_seconds)
+                if not task_id:
+                    self.context_mgr.clear_context()
+                    ui_state("WARNING")
+                    self.voice.play_or_tts("not_sure", "I couldn't schedule that")
+                    self._deafen_after_speak()
+                    ui_state("IDLE")
+                    return False
+                mins = delay_seconds // 60
+                if mins >= 1 and delay_seconds % 60 == 0:
+                    msg = f"Okay. I'll do it in {mins} minutes."
+                else:
+                    msg = f"Okay. I'll do it in {delay_seconds} seconds."
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("scheduled", msg)
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return True
+
+            if t in CONFIRM_NO:
+                self.context_mgr.clear_context()
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+
+            if attempt == 0:
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("confirm_retry", "Please say confirm or cancel.")
+                self._deafen_after_speak()
+
+        self.context_mgr.clear_context()
+        ui_state("WARNING")
+        self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        return False
+
+    def _handle_due_tasks(self):
+        due = self.scheduler.tick()
+        for task in due:
+            ok = self._execute_intent(task.action_intent, task.entities)
+            self.context_mgr.clear_context()
+            if ok:
+                self._record_action(task.action_intent, task.entities or {})
+            else:
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_sure", "I couldn't complete that")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+    def _confirm_and_execute(self, intent: str, exec_fn, original_text: str | None = None):
+        ui_state("SPEAKING")
+        self.voice.play_or_tts("confirm", "Confirm or cancel.")
+        self._deafen_after_speak()
+
+        for attempt in range(2):
+            reply = self.listen_command_vosk(max_seconds=6, min_listen_ms=1200, ui_state_label="CONFIRM")
+            if not reply:
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+
+            t = " ".join(reply.lower().split())
+            if t in CONFIRM_YES:
+                if original_text:
+                    self._set_last_command(original_text)
+                else:
+                    self._set_last_command(intent)
+
+                response = VOICE_RESPONSES.get(intent, f"Executing {intent}")
+                ui_state("SPEAKING")
+                self.voice.play_or_tts(intent.replace(" ", "_"), response)
+                self._deafen_after_speak()
+
+                ui_state("EXECUTING")
+                info(f"Exec: {intent}")
+                try:
+                    exec_fn()
+                    self._set_memory(intent)
+                    self._set_context(intent, {})
+                    self._record_action(intent, {})
+                    ui_state("SUCCESS")
+                    info("Exec: OK")
+                    self._sleep_success()
+                    ui_state("IDLE")
+                    return True
+                except Exception as e:
+                    ui_state("ERROR")
+                    error(f"Exec failed: {e}")
+                    self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                    self._deafen_after_speak()
+                    self._sleep_success()
+                    ui_state("IDLE")
+                    self.history.break_chain()
+                    return False
+
+            if t in CONFIRM_NO:
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+
+            if attempt == 0:
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("confirm_retry", "Please say confirm or cancel.")
+                self._deafen_after_speak()
+
+        ui_state("WARNING")
+        self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        self.history.break_chain()
+        return False
+
+    def _repeat_from_memory(self) -> bool:
+        mem = self.short_memory or {}
+        intent = mem.get("last_intent")
+        args = mem.get("args") or {}
+        if not intent:
+            return False
+
+        self._is_repeating = True
+        try:
+            if intent == "set_volume":
+                value = args.get("value")
+                if value is None:
+                    return False
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("set_volume", f"Setting volume to {value} percent")
+                self._deafen_after_speak()
+                ui_state("EXECUTING")
+                ok = set_volume_percent(int(value))
+                if not ok:
+                    volume_steps(up=True, steps=1)
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+
+            if intent == "volume up":
+                steps = int(args.get("steps") or 6)
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("volume_up", VOICE_RESPONSES.get("volume up", "Adjusting volume"))
+                self._deafen_after_speak()
+                ui_state("EXECUTING")
+                volume_steps(up=True, steps=steps)
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+
+            if intent == "volume down":
+                steps = int(args.get("steps") or 6)
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Adjusting volume"))
+                self._deafen_after_speak()
+                ui_state("EXECUTING")
+                volume_steps(up=False, steps=steps)
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+
+            if intent == "open app":
+                app_id = (args.get("id") or "").strip().lower()
+                app = find_app(self.apps, app_id)
+                if not app:
+                    return False
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("open_app", f"Opening {app['id']}")
+                self._deafen_after_speak()
+                ui_state("EXECUTING")
+                ok = launch_app(app)
+                if ok:
+                    ui_state("SUCCESS")
+                    self._sleep_success()
+                    ui_state("IDLE")
+                    return True
+                return False
+
+            if intent == "close app":
+                app_id = (args.get("id") or "").strip().lower()
+                app = find_app(self.apps, app_id)
+                if not app:
+                    return False
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("close_app", f"Closing {app['id']}")
+                self._deafen_after_speak()
+                ui_state("EXECUTING")
+                ok = close_app(app)
+                if ok:
+                    ui_state("SUCCESS")
+                    self._sleep_success()
+                    ui_state("IDLE")
+                    return True
+                return False
+
+            if intent == "close active":
+                proc = (args.get("process") or "").strip()
+                if not proc:
+                    return False
+                proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("close_active", "Closing current app")
+                self._deafen_after_speak()
+                ui_state("EXECUTING")
+                ok = close_app_by_process(proc_name, force=False)
+                time.sleep(0.15)
+                ok2 = close_app_by_process(proc_name, force=True)
+                if ok or ok2:
+                    ui_state("SUCCESS")
+                    self._sleep_success()
+                    ui_state("IDLE")
+                    return True
+                return False
+
+            if intent == "switch window":
+                ui_state("EXECUTING")
+                self.start_window_switch()
+                return True
+
+            if intent in COMMANDS:
+                if intent in DANGEROUS_INTENTS:
+                    return self._confirm_and_execute(intent, COMMANDS[intent], original_text=intent)
+
+                response = VOICE_RESPONSES.get(intent, f"Executing {intent}")
+                ui_state("SPEAKING")
+                self.voice.play_or_tts(intent.replace(" ", "_"), response)
+                self._deafen_after_speak()
+                ui_state("EXECUTING")
+                info(f"Exec: {intent}")
+                COMMANDS[intent]()
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+
+            return False
+        finally:
+            self._is_repeating = False
+
     def process_command(self, text: str):
         if self.window_switch_active:
             t = (text or "").strip().lower()
@@ -449,9 +1127,144 @@ class Aidy:
             self.voice.play_or_tts("window_switch_help", "Left or right, sir. Say done.")
             self._deafen_after_speak()
             ui_state("IDLE")
+            self.history.break_chain()
             return False
 
         t0 = (text or "").strip().lower()
+        if t0 in UNMUTE_PHRASES:
+            self.voice.muted = False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("unmute", "Sound on.")
+            self._deafen_after_speak()
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            self._record_action("unmute", {})
+            return True
+
+        if t0 in MUTE_PHRASES:
+            self.voice.muted = True
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            self._record_action("mute", {})
+            return True
+
+        if t0 in UNDO_ALL_PHRASES:
+            return self._undo_chain()
+
+        if t0 in UNDO_LAST_PHRASES:
+            return self._undo_last()
+
+        delay_req = parse_delay_request(text)
+        if delay_req:
+            action_text, delay_seconds = delay_req
+            if delay_seconds > self.scheduler.max_delay_seconds:
+                self.context_mgr.clear_context()
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_sure", "I couldn't schedule that")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+            if self.scheduler.count() >= self.scheduler.max_tasks:
+                self.context_mgr.clear_context()
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_sure", "Queue is full")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+
+            intent, entities = self._infer_intent_and_entities(action_text)
+            if not intent:
+                self.context_mgr.clear_context()
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_sure", "I'm not sure what you mean")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+
+            if intent in DANGEROUS_INTENTS:
+                return self._confirm_and_schedule(intent, entities, delay_seconds)
+
+            task = Task(id=0, action_intent=intent, entities=entities, execute_at=0)
+            task_id = self.scheduler.schedule(task, delay_seconds)
+            if not task_id:
+                self.context_mgr.clear_context()
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_sure", "I couldn't schedule that")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+
+            mins = delay_seconds // 60
+            if mins >= 1 and delay_seconds % 60 == 0:
+                msg = f"Okay. I'll do it in {mins} minutes."
+            else:
+                msg = f"Okay. I'll do it in {delay_seconds} seconds."
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("scheduled", msg)
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return True
+
+        if t0 in REPEAT_PHRASES:
+            if self._repeat_from_memory():
+                return True
+
+            if not self.last_command_text:
+                ui_state("IDLE")
+                return False
+
+            if self.last_command_text.strip().lower() in REPEAT_PHRASES:
+                ui_state("IDLE")
+                return False
+
+            self._is_repeating = True
+            try:
+                return self.process_command(self.last_command_text)
+            finally:
+                self._is_repeating = False
+
+        if t0 in CLOSE_ACTIVE_PHRASES:
+            info = get_active_window_info()
+            if not info:
+                ui_state("IDLE")
+                return False
+
+            proc = (info.get("process") or "").strip()
+            if not proc:
+                ui_state("IDLE")
+                return False
+
+            proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
+
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("close_active", "Closing current app")
+            self._deafen_after_speak()
+
+            ui_state("EXECUTING")
+            self._set_last_command(text)
+            ok = close_app_by_process(proc_name, force=False)
+            time.sleep(0.15)
+            ok2 = close_app_by_process(proc_name, force=True)
+            if ok or ok2:
+                self._set_memory("close active", {"process": proc})
+                ui_state("SUCCESS")
+                self._sleep_success()
+                ui_state("IDLE")
+                return True
+
+            ui_state("ERROR")
+            self.voice.play_or_tts("close_app_fail", "Sorry, I couldn't close it")
+            self._deafen_after_speak()
+            self._sleep_success()
+            ui_state("IDLE")
+            return False
+
         if t0.startswith(("close ", "quit ", "exit ", "kill ", "stop ")):
             app_name = extract_close_app_name(t0)
             app = find_app(self.apps, app_name)
@@ -461,6 +1274,7 @@ class Aidy:
                 self.voice.play_or_tts("app_not_found", "I couldn't find that app")
                 self._deafen_after_speak()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
             ui_state("SPEAKING")
@@ -468,9 +1282,13 @@ class Aidy:
             self._deafen_after_speak()
 
             ui_state("EXECUTING")
+            self._set_last_command(text)
             ok = close_app(app)
 
             if ok:
+                self._set_context("close app", {"app": app["id"]})
+                self._set_memory("close app", {"id": app["id"]})
+                self._record_action("close app", {"app": app["id"]})
                 ui_state("SUCCESS")
                 time.sleep(3.18)
                 ui_state("IDLE")
@@ -479,14 +1297,18 @@ class Aidy:
             ui_state("ERROR")
             self.voice.play_or_tts("close_app_fail", "Sorry, I couldn't close it")
             self._deafen_after_speak()
-            time.sleep(0.18)
+            self._sleep_success()
             ui_state("IDLE")
+            self.history.break_chain()
             return False
 
         t0 = " ".join((text or "").lower().split())
 
         # Offline direct commands without Intent API
         if t0 in COMMANDS:
+            if t0 in DANGEROUS_INTENTS:
+                return self._confirm_and_execute(t0, COMMANDS[t0], original_text=text)
+
             response = VOICE_RESPONSES.get(t0, f"Executing {t0}")
             ui_state("SPEAKING")
             self.voice.play_or_tts(t0.replace(" ", "_"), response)
@@ -494,10 +1316,14 @@ class Aidy:
 
             ui_state("EXECUTING")
             info(f"Exec: {t0}")
+            self._set_last_command(text)
             try:
                 COMMANDS[t0]()
+                self._set_memory(t0)
+                self._set_context(t0, {})
+                self._record_action(t0, {})
                 ui_state("SUCCESS")
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
                 return True
             except Exception as e:
@@ -505,8 +1331,9 @@ class Aidy:
                 error(f"Exec failed: {e}")
                 self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
                 self._deafen_after_speak()
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
         if t0 in ("volume up", "sound up", "increase volume", "louder", "make it louder"):
@@ -514,9 +1341,12 @@ class Aidy:
             self.voice.play_or_tts("volume_up", VOICE_RESPONSES.get("volume up", "Turning it up"))
             self._deafen_after_speak()
             ui_state("EXECUTING")
+            self._set_memory("volume up", {"steps": 6})
+            self._set_context("volume up", {"steps": 6})
+            self._record_action("volume up", {"steps": 6})
             volume_steps(up=True, steps=6)
             ui_state("SUCCESS")
-            time.sleep(0.18)
+            self._sleep_success()
             ui_state("IDLE")
             return True
 
@@ -525,9 +1355,12 @@ class Aidy:
             self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Turning it down"))
             self._deafen_after_speak()
             ui_state("EXECUTING")
+            self._set_memory("volume down", {"steps": 6})
+            self._set_context("volume down", {"steps": 6})
+            self._record_action("volume down", {"steps": 6})
             volume_steps(up=False, steps=6)
             ui_state("SUCCESS")
-            time.sleep(0.18)
+            self._sleep_success()
             ui_state("IDLE")
             return True
 
@@ -537,8 +1370,11 @@ class Aidy:
             self._deafen_after_speak()
             ui_state("EXECUTING")
             COMMANDS["brightness up"]()
+            self._set_memory("brightness up")
+            self._set_context("brightness up", {})
+            self._record_action("brightness up", {})
             ui_state("SUCCESS")
-            time.sleep(0.18)
+            self._sleep_success()
             ui_state("IDLE")
             return True
 
@@ -548,8 +1384,11 @@ class Aidy:
             self._deafen_after_speak()
             ui_state("EXECUTING")
             COMMANDS["brightness down"]()
+            self._set_memory("brightness down")
+            self._set_context("brightness down", {})
+            self._record_action("brightness down", {})
             ui_state("SUCCESS")
-            time.sleep(0.18)
+            self._sleep_success()
             ui_state("IDLE")
             return True
 
@@ -564,23 +1403,27 @@ class Aidy:
             ok = launch_app(app)
 
             if ok:
+                self._set_context("open app", {"app": app["id"]})
+                self._set_memory("open app", {"id": app["id"]})
+                self._record_action("open app", {"app": app["id"]})
                 ui_state("SUCCESS")
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
                 return True
             else:
                 if "browser" in app.get("aliases", []) or app.get("id") in ("chrome", "browser"):
                     if self._open_default_browser():
                         ui_state("SUCCESS")
-                        time.sleep(0.18)
+                        self._sleep_success()
                         ui_state("IDLE")
                         return True
 
                 ui_state("ERROR")
                 self.voice.play_or_tts("open_app_fail", "Sorry, I couldn't open it")
                 self._deafen_after_speak()
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
         if t0.startswith(("open ", "launch ", "start ", "run ")):
@@ -596,8 +1439,11 @@ class Aidy:
                 ok = launch_app(app)
 
                 if ok:
+                    self._set_context("open app", {"app": app["id"]})
+                    self._set_memory("open app", {"id": app["id"]})
+                    self._record_action("open app", {"app": app["id"]})
                     ui_state("SUCCESS")
-                    time.sleep(0.18)
+                    self._sleep_success()
                     ui_state("IDLE")
                     return True
                 else:
@@ -605,19 +1451,24 @@ class Aidy:
                     if "browser" in app.get("aliases", []) or app.get("id") in ("chrome", "browser"):
                         if self._open_default_browser():
                             ui_state("SUCCESS")
-                            time.sleep(0.18)
+                            self._sleep_success()
                             ui_state("IDLE")
                             return True
 
                     ui_state("ERROR")
                     self.voice.play_or_tts("open_app_fail", "Sorry, I couldn't open it")
                     self._deafen_after_speak()
-                    time.sleep(0.18)
+                    self._sleep_success()
                     ui_state("IDLE")
+                    self.history.break_chain()
                     return False
 
         if t0 == "switch" or t0.startswith("switch ") or t0 in ("switch app", "switch window"):
             ui_state("EXECUTING")
+            self._set_last_command(text)
+            self._set_memory("switch window")
+            self._set_context("switch window", {})
+            self._record_action("switch window", {})
             self.start_window_switch()
             return True
 
@@ -626,10 +1477,12 @@ class Aidy:
 
         result = self.api.get_intent(text)
         if not result:
-            ui_state("OFFLINE")
-            self.voice.play_or_tts("offline", "Sorry, I couldn't connect to the server")
-            self._deafen_after_speak()
+            ui_state("WARNING")
+            if not self.voice.muted:
+                self.voice.play_or_tts("not_sure", "I'm not sure what you mean")
+                self._deafen_after_speak()
             ui_state("IDLE")
+            self.history.break_chain()
             return False
 
         intent = (result.get("intent") or "").strip().lower()
@@ -638,10 +1491,17 @@ class Aidy:
         info(f"Intent: {intent}  conf={confidence:.2f}")
 
         if confidence < 0.4:
+            if confidence >= self.context_mgr.min_confidence and self._is_followup_phrase(text):
+                ctx = self.context_mgr.get_context()
+                if ctx and self._apply_followup(ctx, text, intent):
+                    self.context_mgr.clear_context()
+                    return True
+                self.context_mgr.clear_context()
             ui_state("WARNING")
             self.voice.play_or_tts("not_sure", "I'm not sure what you mean")
             self._deafen_after_speak()
             ui_state("IDLE")
+            self.history.break_chain()
             return False
 
         if intent in ("volume up", "volume down"):
@@ -656,9 +1516,13 @@ class Aidy:
                 self.voice.play_or_tts(intent.replace(" ", "_"), VOICE_RESPONSES.get(intent, "Adjusting volume"))
                 self._deafen_after_speak()
                 ui_state("EXECUTING")
+                self._set_last_command(text)
+                self._set_memory(intent, {"steps": steps})
+                self._set_context(intent, {"steps": steps})
+                self._record_action(intent, {"steps": steps})
                 volume_steps(up, steps)
                 ui_state("SUCCESS")
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
                 return True
 
@@ -667,11 +1531,15 @@ class Aidy:
                 self.voice.play_or_tts("set_volume", f"Setting volume to {n} percent")
                 self._deafen_after_speak()
                 ui_state("EXECUTING")
+                self._set_last_command(text)
+                self._set_memory("set_volume", {"value": n})
+                self._set_context("set_volume", {"value": n})
+                self._record_action("set_volume", {"value": n})
                 ok = set_volume_percent(n)
                 if not ok:
                     volume_steps(up=True, steps=1)
                 ui_state("SUCCESS")
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
                 return True
 
@@ -680,14 +1548,22 @@ class Aidy:
             self.voice.play_or_tts(intent.replace(" ", "_"), VOICE_RESPONSES.get(intent, "Adjusting volume"))
             self._deafen_after_speak()
             ui_state("EXECUTING")
+            self._set_last_command(text)
+            self._set_memory(intent, {"steps": steps})
+            self._set_context(intent, {"steps": steps})
+            self._record_action(intent, {"steps": steps})
             volume_steps(up, steps)
             ui_state("SUCCESS")
-            time.sleep(0.18)
+            self._sleep_success()
             ui_state("IDLE")
             return True
 
         if intent == "switch window":
             ui_state("EXECUTING")
+            self._set_last_command(text)
+            self._set_memory("switch window")
+            self._set_context("switch window", {})
+            self._record_action("switch window", {})
             self.start_window_switch()
             return True
 
@@ -700,6 +1576,7 @@ class Aidy:
                 self.voice.play_or_tts("app_not_found", "I couldn't find that app")
                 self._deafen_after_speak()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
             ui_state("SPEAKING")
@@ -707,25 +1584,30 @@ class Aidy:
             self._deafen_after_speak()
 
             ui_state("EXECUTING")
+            self._set_last_command(text)
             ok = launch_app(app)
 
             if ok:
+                self._set_memory("open app", {"id": app["id"]})
+                self._set_context("open app", {"app": app["id"]})
+                self._record_action("open app", {"app": app["id"]})
                 ui_state("SUCCESS")
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
                 return True
             else:
                 if "browser" in app.get("aliases", []) or app.get("id") in ("chrome", "browser"):
                     if self._open_default_browser():
                         ui_state("SUCCESS")
-                        time.sleep(0.18)
+                        self._sleep_success()
                         ui_state("IDLE")
                         return True
                 ui_state("ERROR")
                 self.voice.play_or_tts("open_app_fail", "Sorry, I couldn't open it")
                 self._deafen_after_speak()
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
         if intent == "close app":
@@ -737,6 +1619,7 @@ class Aidy:
                 self.voice.play_or_tts("app_not_found", "I couldn't find that app")
                 self._deafen_after_speak()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
             ui_state("SPEAKING")
@@ -744,22 +1627,30 @@ class Aidy:
             self._deafen_after_speak()
 
             ui_state("EXECUTING")
+            self._set_last_command(text)
             ok = close_app(app)
 
             if ok:
+                self._set_memory("close app", {"id": app["id"]})
+                self._set_context("close app", {"app": app["id"]})
+                self._record_action("close app", {"app": app["id"]})
                 ui_state("SUCCESS")
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
                 return True
             else:
                 ui_state("ERROR")
                 self.voice.play_or_tts("close_app_fail", "Sorry, I couldn't close it")
                 self._deafen_after_speak()
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
         if intent in COMMANDS:
+            if intent in DANGEROUS_INTENTS:
+                return self._confirm_and_execute(intent, COMMANDS[intent], original_text=text)
+
             response = VOICE_RESPONSES.get(intent, f"Executing {intent}")
             ui_state("SPEAKING")
             self.voice.play_or_tts(intent.replace(" ", "_"), response)
@@ -767,12 +1658,16 @@ class Aidy:
 
             ui_state("EXECUTING")
             info(f"Exec: {intent}")
+            self._set_last_command(text)
 
             try:
                 COMMANDS[intent]()
+                self._set_memory(intent)
+                self._set_context(intent, {})
+                self._record_action(intent, {})
                 ui_state("SUCCESS")
                 info("Exec: OK")
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
                 return True
             except Exception as e:
@@ -780,8 +1675,9 @@ class Aidy:
                 error(f"Exec failed: {e}")
                 self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
                 self._deafen_after_speak()
-                time.sleep(0.18)
+                self._sleep_success()
                 ui_state("IDLE")
+                self.history.break_chain()
                 return False
 
         ui_state("WARNING")
@@ -789,7 +1685,21 @@ class Aidy:
         self.voice.play_or_tts("not_implemented", "I don't know how to do that yet")
         self._deafen_after_speak()
         ui_state("IDLE")
+        self.history.break_chain()
         return False
+
+    def _safe_process_command(self, text: str) -> bool:
+        try:
+            return self.process_command(text)
+        except Exception as e:
+            ui_state("ERROR")
+            error(f"Command failed: {e}")
+            if not self.voice.muted:
+                self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                self._deafen_after_speak()
+            ui_state("IDLE")
+            self.history.break_chain()
+            return False
 
     def run(self):
         info("AIDY start")
@@ -816,7 +1726,7 @@ class Aidy:
                     cmd_text = self.listen_command_vosk(max_seconds=3)
                     if cmd_text:
                         self.window_switch_silence_hits = 0
-                        self.process_command(cmd_text)
+                        self._safe_process_command(cmd_text)
                     else:
                         self.window_switch_silence_hits += 1
                         if self.window_switch_silence_hits >= 3:
@@ -824,9 +1734,10 @@ class Aidy:
                     continue
 
                 self.wait_for_wake()
+                self._handle_due_tasks()
                 cmd_text = self.listen_command_vosk(max_seconds=20)
                 if cmd_text:
-                    self.process_command(cmd_text)
+                    self._safe_process_command(cmd_text)
                 else:
                     ui_state("IDLE")
 
@@ -842,3 +1753,10 @@ class Aidy:
             self.stop_stream()
             self.audio.terminate()
             info("AIDY stopped")
+
+
+
+
+
+
+

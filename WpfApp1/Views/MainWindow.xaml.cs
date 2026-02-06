@@ -116,6 +116,7 @@ namespace WpfApp1.Views
             // core internal words to hide
             if (s == "exit") return true;
             if (s == "cancel") return true;
+            if (s == "confirm") return true;
 
             // window-switch internal controls (optional)
             if (s == "left") return true;
@@ -237,6 +238,9 @@ namespace WpfApp1.Views
                 case AidyState.Speaking:
                     StartRing("SB_Ring_Speaking");
                     break;
+                case AidyState.Confirming:
+                    StartRing("SB_Ring_Warning");
+                    break;
 
                 case AidyState.Executing:
                     StartRing("SB_Ring_Executing");
@@ -300,6 +304,15 @@ namespace WpfApp1.Views
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveSpeaking);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveSpeaking);
+                    break;
+
+                case AidyState.Confirming:
+                    Wave.Opacity = 1;
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
                     break;
 
                 case AidyState.Executing:

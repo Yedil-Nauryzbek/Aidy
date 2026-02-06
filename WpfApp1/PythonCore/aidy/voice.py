@@ -2,6 +2,7 @@
 import glob
 import random
 import ctypes
+import time
 from ctypes import wintypes
 
 import pyttsx3
@@ -41,6 +42,7 @@ def play_audio_async(path: str, alias: str = "aidyvoice") -> bool:
 class Voice:
     def __init__(self, base_dir: str):
         self.base_dir = base_dir
+        self.muted = False
 
         candidates = [
             os.path.join(base_dir, "Assets", "voice"),
@@ -78,6 +80,9 @@ class Voice:
         return random.choice(candidates)
 
     def play_or_tts(self, key: str, fallback_text: str):
+        if self.muted:
+            time.sleep(0.12)
+            return
         audio = self._pick_audio(key)
         print(
             "VOICE KEY:", key,
@@ -98,6 +103,8 @@ class Voice:
             print("TTS ERROR:", e, flush=True)
 
     def tts_blocking(self, text: str):
+        if self.muted:
+            return
         try:
             self.engine.say(text)
             self.engine.runAndWait()

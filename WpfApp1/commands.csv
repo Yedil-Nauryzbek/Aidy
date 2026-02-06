@@ -1,5 +1,72 @@
 
 command,intent
+repeat,repeat
+repeat that,repeat
+repeat it,repeat
+repeat last command,repeat
+repeat last,repeat
+do it again,repeat
+again,repeat
+repeet,repeat
+repete,repeat
+repit,repeat
+repet,repeat
+ripit,repeat
+close this,close active
+close it,close active
+close window,close active
+close current window,close active
+close current app,close active
+close current application,close active
+close active app,close active
+close active window,close active
+close this window,close active
+close this app,close active
+mute,mute
+mute aidy,mute
+mute ady,mute
+mute eddie,mute
+mute edy,mute
+shut up,mute
+shutup,mute
+shat up,mute
+shut ap,mute
+shut op,mute
+shot up,mute
+unmute,unmute
+unmute aidy,unmute
+unmute ady,unmute
+unmute eddie,unmute
+unmute edy,unmute
+un mute,unmute
+an mute,unmute
+and mute,unmute
+on mute,unmute
+one mute,unmute
+unmuted,unmute
+unmoot,unmute
+unmoot aidy,unmute
+sound back,unmute
+sound on,unmute
+turn on sound,unmute
+turn sound on,unmute
+undo,undo_action
+undo last,undo_action
+undo that,undo_action
+undo it,undo_action
+go back,undo_action
+revert,undo_action
+cancel that,undo_action
+undo all,undo_action
+undo everything,undo_action
+undo all that,undo_action
+undo everything you did,undo_action
+undo all you did,undo_action
+undo the last actions,undo_action
+cancel everything,undo_action
+cancel all,undo_action
+cancel all actions,undo_action
+cancel everything you did,undo_action
 volume up,volume up
 increase volume,volume up
 turn it up,volume up
