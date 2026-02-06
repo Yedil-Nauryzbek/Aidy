@@ -162,6 +162,7 @@ namespace WpfApp1.Services
                     "LISTENING" => AidyState.Listening,
                     "PROCESSING" => AidyState.Processing,
                     "SPEAKING" => AidyState.Speaking,
+                    "CONFIRM" => AidyState.Confirming,
                     "EXECUTING" => AidyState.Executing,
                     "SUCCESS" => AidyState.Success,
                     "WARNING" => AidyState.Warning,

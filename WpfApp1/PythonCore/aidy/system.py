@@ -128,3 +128,37 @@ def open_task_manager():
         return True
     except Exception:
         return False
+
+
+def get_active_window_info() -> dict | None:
+    try:
+        user32 = ctypes.windll.user32
+
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+
+        length = user32.GetWindowTextLengthW(hwnd)
+        title_buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, title_buf, length + 1)
+        title = title_buf.value or ""
+
+        pid = ctypes.c_ulong(0)
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        pid_val = int(pid.value)
+        if pid_val <= 0:
+            return None
+
+        ps_cmd = f"(Get-Process -Id {pid_val}).ProcessName"
+        out = subprocess.check_output(
+            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        proc = (out or "").strip()
+        if not proc:
+            return None
+
+        return {"pid": pid_val, "process": proc, "title": title}
+    except Exception:
+        return None

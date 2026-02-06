@@ -8,6 +8,7 @@ namespace WpfApp1.Models
         Listening,   // mic listening
         Processing,  // thinking/processing
         Speaking,    // TTS speaking
+        Confirming,  // awaiting confirmation
 
         Executing,   // command executing
         Success,     // one-shot ping then back to Idle
