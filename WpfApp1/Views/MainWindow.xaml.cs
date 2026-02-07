@@ -241,6 +241,9 @@ namespace WpfApp1.Views
                 case AidyState.Confirming:
                     StartRing("SB_Ring_Warning");
                     break;
+                case AidyState.FollowUp:
+                    StartRing("SB_Ring_FollowUp");
+                    break;
 
                 case AidyState.Executing:
                     StartRing("SB_Ring_Executing");
@@ -307,6 +310,14 @@ namespace WpfApp1.Views
                     break;
 
                 case AidyState.Confirming:
+                    Wave.Opacity = 1;
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+                case AidyState.FollowUp:
                     Wave.Opacity = 1;
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);

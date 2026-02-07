@@ -34,10 +34,35 @@ def set_volume_percent(p: int) -> bool:
         return False
 
 
-def volume_steps(up: bool, steps: int):
+def volume_steps(up: bool, steps: int, presses_per_step: int = 2):
     key = "volumeup" if up else "volumedown"
-    for _ in range(max(1, steps)):
+    total_presses = max(1, steps) * max(1, presses_per_step)
+    for _ in range(total_presses):
         pyautogui.press(key)
+
+
+def brightness_steps(up: bool, steps: int, step_percent: int = 10):
+    safe_steps = max(1, min(10, int(steps)))
+    delta = safe_steps * max(1, step_percent)
+    if not up:
+        delta = -delta
+    ps_command = (
+        "$m=Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods;"
+        "$b=Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness;"
+        "$c=[int]$b.CurrentBrightness;"
+        f"$t=[Math]::Max(0,[Math]::Min(100,$c+({delta})));"
+        "$m.WmiSetBrightness(1,$t)|Out-Null"
+    )
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_command],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return True
+    except Exception:
+        return False
 
 
 def show_desktop():

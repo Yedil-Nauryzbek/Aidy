@@ -9,6 +9,7 @@ namespace WpfApp1.Models
         Processing,  // thinking/processing
         Speaking,    // TTS speaking
         Confirming,  // awaiting confirmation
+        FollowUp,    // awaiting short numeric follow-up
 
         Executing,   // command executing
         Success,     // one-shot ping then back to Idle

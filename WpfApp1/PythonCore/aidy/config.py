@@ -8,9 +8,12 @@ WAKE_KEYWORDS = {
     "hey assistant",
     "hello assistant",
     "ok aidy",
+    "okay aidy",
+    "okay assistant",
     "eddie",
     "hey eddie",
     "ok eddie",
+    "okay eddie",
     "eighty",
     "hey eighty",
     "ok eighty",
@@ -142,6 +145,76 @@ WINDOW_SWITCH_CANCEL = {"cancel", "stop", "exit"}
 WINDOW_SWITCH_GRAMMAR = sorted(
     WINDOW_SWITCH_LEFT | WINDOW_SWITCH_RIGHT | WINDOW_SWITCH_DONE | WINDOW_SWITCH_CANCEL
 )
+
+REPEAT_LAST_STEPS = False
+FOLLOW_MODE_ENABLED = True
+FOLLOW_MODE_TTL_SECONDS = 10
+FOLLOW_MODE_REPEAT_LAST_STEPS = False
+
+MORE_ACTION_PHRASES = {
+    "more",
+    "again",
+    "next",
+    "ещё",
+    "еще",
+    "дальше",
+}
+
+LESS_ACTION_PHRASES = {
+    "less",
+    "back",
+    "меньше",
+    "назад",
+}
+
+NUMERIC_VARIANTS = {
+    1: [
+        "1", "one", "won", "wun", "wan", "wone", "on", "un", "oan", "hwon",
+        "number one", "num one", "one step", "one please", "won step",
+    ],
+    2: [
+        "2", "two", "too", "to", "tu", "tuu", "twoo", "tow", "tew", "number two",
+        "num two", "two step", "too step", "to step", "two please",
+    ],
+    3: [
+        "3", "three", "tree", "threee", "thre", "thri", "thry", "free", "sree", "number three",
+        "num three", "three step", "tree step", "three please", "thri step",
+    ],
+    4: [
+        "4", "four", "for", "fore", "foor", "fourr", "fur", "phor", "foar", "number four",
+        "num four", "four step", "for step", "four please", "fore step",
+    ],
+    5: [
+        "5", "five", "fiv", "fife", "faiv", "faeve", "fyve", "fibe", "hive", "number five",
+        "num five", "five step", "fife step", "five please", "faiv step",
+    ],
+    6: [
+        "6", "six", "sics", "sic", "sik", "seeks", "sikx", "sex", "sicks", "number six",
+        "num six", "six step", "sik step", "six please", "sics step",
+    ],
+    7: [
+        "7", "seven", "sevan", "siven", "sevun", "seben", "zeven", "savin", "sevin", "number seven",
+        "num seven", "seven step", "seven please", "sevun step", "siven step",
+    ],
+    8: [
+        "8", "eight", "ate", "aight", "eit", "eyt", "ait", "eigh", "eightt", "number eight",
+        "num eight", "eight step", "ate step", "eight please", "aight step",
+    ],
+    9: [
+        "9", "nine", "nain", "nyne", "naine", "nein", "nien", "nayn", "number nine", "num nine",
+        "nine step", "nain step", "nine please", "nyne step", "nayn step",
+    ],
+    10: [
+        "10", "ten", "tin", "tenn", "tehn", "tane", "den", "then", "number ten", "num ten",
+        "ten step", "tin step", "ten please", "tehn step", "then step",
+    ],
+}
+
+NUMERIC_FOLLOWUP_WORD_TO_VALUE = {}
+for _value, _variants in NUMERIC_VARIANTS.items():
+    for _variant in _variants:
+        NUMERIC_FOLLOWUP_WORD_TO_VALUE[_variant] = _value
+NUMERIC_FOLLOWUP_GRAMMAR_PHRASES = sorted(NUMERIC_FOLLOWUP_WORD_TO_VALUE.keys())
 
 
 VOICE_RESPONSES = {

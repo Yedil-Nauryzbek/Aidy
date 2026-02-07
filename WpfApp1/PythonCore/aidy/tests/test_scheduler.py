@@ -37,6 +37,41 @@ class TestScheduler(unittest.TestCase):
     def test_invalid_time_format(self):
         self.assertIsNone(parse_delay_request("close browser later"))
 
+    def test_delay_short_postfix(self):
+        parsed = parse_delay_request("open chrome 30 sec")
+        self.assertIsNotNone(parsed)
+        action, delay = parsed
+        self.assertEqual(action, "open chrome")
+        self.assertEqual(delay, 30)
+
+    def test_delay_postfix_without_unit_defaults_seconds(self):
+        parsed = parse_delay_request("open chrome 15")
+        self.assertIsNotNone(parsed)
+        action, delay = parsed
+        self.assertEqual(action, "open chrome")
+        self.assertEqual(delay, 15)
+
+    def test_delay_prefix_style(self):
+        parsed = parse_delay_request("after 2 minutes open chrome")
+        self.assertIsNotNone(parsed)
+        action, delay = parsed
+        self.assertEqual(action, "open chrome")
+        self.assertEqual(delay, 120)
+
+    def test_delay_word_number(self):
+        parsed = parse_delay_request("open chrome ten sec")
+        self.assertIsNotNone(parsed)
+        action, delay = parsed
+        self.assertEqual(action, "open chrome")
+        self.assertEqual(delay, 10)
+
+    def test_delay_asr_settings_as_seconds(self):
+        parsed = parse_delay_request("open chrome 30 settings")
+        self.assertIsNotNone(parsed)
+        action, delay = parsed
+        self.assertEqual(action, "open chrome")
+        self.assertEqual(delay, 30)
+
 
 if __name__ == "__main__":
     unittest.main()

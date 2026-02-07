@@ -163,6 +163,7 @@ namespace WpfApp1.Services
                     "PROCESSING" => AidyState.Processing,
                     "SPEAKING" => AidyState.Speaking,
                     "CONFIRM" => AidyState.Confirming,
+                    "FOLLOWUP" => AidyState.FollowUp,
                     "EXECUTING" => AidyState.Executing,
                     "SUCCESS" => AidyState.Success,
                     "WARNING" => AidyState.Warning,

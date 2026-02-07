@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import json
 import time
@@ -62,6 +62,13 @@ from .config import (
     WINDOW_SWITCH_DONE,
     WINDOW_SWITCH_CANCEL,
     VOICE_RESPONSES,
+    NUMERIC_FOLLOWUP_GRAMMAR_PHRASES,
+    MORE_ACTION_PHRASES,
+    LESS_ACTION_PHRASES,
+    REPEAT_LAST_STEPS,
+    FOLLOW_MODE_ENABLED,
+    FOLLOW_MODE_TTL_SECONDS,
+    FOLLOW_MODE_REPEAT_LAST_STEPS,
 )
 from .logui import ui_state, ui_command, debug, info, warn, error, UI_MODE, LOG_LEVEL
 from .voice import Voice
@@ -83,6 +90,7 @@ from .system import (
     parse_first_int,
     set_volume_percent,
     volume_steps,
+    brightness_steps,
     get_active_window_info,
 )
 from .intent_api import start_local_intent_api, IntentAPI
@@ -90,15 +98,25 @@ from .context import ContextManager, should_merge_context
 from .scheduler import TaskScheduler, Task
 from .delay import parse_delay_request
 from .action_history import ActionHistory, ActionRecord
+from .followup import (
+    FollowUpManager,
+    PendingAction,
+    PENDING_NEED_STEPS,
+    PENDING_NEED_CHOICE,
+)
+from .decision_core import (
+    STEP_REQUIRED,
+    STEP_INTENT_TO_LEGACY,
+    detect_step_intent_from_text,
+    api_intent_to_step_intent,
+    parse_numeric_input,
+    extract_steps_value,
+)
+from .last_step_action import LastStepActionManager
+from .follow_mode import FollowModeManager, classify_follow_input, resolve_follow_mode_gate
 
 
 COMMANDS = {
-    "brightness up": lambda: run_powershell_hidden(
-        "(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, 80)"
-    ),
-    "brightness down": lambda: run_powershell_hidden(
-        "(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, 30)"
-    ),
     "shutdown": lambda: os.system("shutdown /s /t 5"),
     "restart": lambda: os.system("shutdown /r /t 5"),
     "lock": lambda: ctypes.windll.user32.LockWorkStation(),
@@ -227,6 +245,7 @@ class Aidy:
         self.command_phrases = load_command_phrases(self.base_dir)
         self.command_phrases = sorted(
             set(self.command_phrases)
+            | set(WAKE_KEYWORDS)
             | set(CONFIRM_GRAMMAR_PHRASES)
             | set(WINDOW_SWITCH_GRAMMAR)
             | set(REPEAT_PHRASES)
@@ -235,6 +254,9 @@ class Aidy:
             | set(UNMUTE_PHRASES)
             | set(UNDO_LAST_PHRASES)
             | set(UNDO_ALL_PHRASES)
+            | set(NUMERIC_FOLLOWUP_GRAMMAR_PHRASES)
+            | set(MORE_ACTION_PHRASES)
+            | set(LESS_ACTION_PHRASES)
         )
 
         self.apps = load_apps_config(self.base_dir)
@@ -262,6 +284,10 @@ class Aidy:
         self.context_mgr = ContextManager(ttl_seconds=7.5, min_confidence=0.2, main_confidence=0.4)
         self.scheduler = TaskScheduler(max_tasks=5, max_delay_seconds=3600)
         self.history = ActionHistory(max_actions=20, chain_gap_seconds=5.0)
+        self.follow_up = FollowUpManager(ttl_seconds=8.0)
+        self.last_step_actions = LastStepActionManager(ttl_seconds=12.0)
+        self.repeat_last_steps = FOLLOW_MODE_REPEAT_LAST_STEPS or REPEAT_LAST_STEPS
+        self.follow_mode = FollowModeManager(ttl_seconds=float(FOLLOW_MODE_TTL_SECONDS), enabled=bool(FOLLOW_MODE_ENABLED))
 
     def start_stream(self):
         if self.stream is not None:
@@ -328,6 +354,8 @@ class Aidy:
         VK_ALT = 0x12
         VK_TAB = 0x09
 
+        self.last_step_actions.clear()
+        self.follow_mode.clear()
         self.window_switch_active = True
         self.window_switch_silence_hits = 0
 
@@ -488,12 +516,12 @@ class Aidy:
         words = t.split()
         if len(words) > 4:
             return False
-        linkers = {"è", "òåïåðü", "äàëüøå", "åù¸", "åùå"}
+        linkers = {"ГЁ", "ГІГҐГЇГҐГ°Гј", "Г¤Г Г«ГјГёГҐ", "ГҐГ№Вё", "ГҐГ№ГҐ"}
         return any(w in linkers for w in words)
 
     def _strip_linkers(self, text: str) -> str:
         t = (text or "").strip().lower()
-        words = [w for w in t.split() if w not in {"è", "òåïåðü", "äàëüøå", "åù¸", "åùå"}]
+        words = [w for w in t.split() if w not in {"ГЁ", "ГІГҐГЇГҐГ°Гј", "Г¤Г Г«ГјГёГҐ", "ГҐГ№Вё", "ГҐГ№ГҐ"}]
         return " ".join(words).strip()
 
     def _apply_followup(self, ctx: dict, text: str, api_intent: str) -> bool:
@@ -543,6 +571,152 @@ class Aidy:
                 return True
             return False
 
+        return False
+
+    def _cancel_pending(self, speak_cancelled: bool):
+        self.follow_up.clear_pending()
+        self.last_step_actions.clear()
+        self.follow_mode.clear()
+        if speak_cancelled:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("pending_cancelled", "Cancelled.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+
+    def _execute_step_intent(self, step_intent: str, steps: int, original_text: str, extra_entities: dict | None = None) -> bool:
+        cfg = STEP_REQUIRED.get(step_intent)
+        if not cfg:
+            return False
+        exec_entities = {
+            "direction": cfg["direction"],
+            "magnitude_steps": max(1, min(10, int(steps))),
+        }
+        if extra_entities:
+            exec_entities.update(extra_entities)
+        ok = self._execute_intent(cfg["base"], exec_entities)
+        if not ok:
+            self.history.break_chain()
+            return False
+        action_intent = STEP_INTENT_TO_LEGACY.get(step_intent, step_intent.replace("_", " "))
+        action_entities = {"steps": exec_entities["magnitude_steps"]}
+        self._set_last_command(original_text)
+        self._set_memory(action_intent, action_entities)
+        self._set_context(action_intent, action_entities)
+        self._record_action(action_intent, action_entities)
+        return True
+
+    def _legacy_step_intent_name(self, base_intent: str, direction: str) -> str:
+        direction = (direction or "").upper()
+        if base_intent == "volume_change":
+            return "volume up" if direction == "UP" else "volume down"
+        if base_intent == "brightness_change":
+            return "brightness up" if direction == "UP" else "brightness down"
+        return base_intent
+
+    def _handle_more_less_action(self, is_less: bool, command_text: str) -> bool:
+        last = self.follow_mode.get_last_step_action_if_active()
+        if not last:
+            last = self.last_step_actions.get_if_fresh(ttl_seconds=12)
+        if not last:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("not_now", "Nothing to adjust." if is_less else "Nothing to repeat.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+        steps_to_apply = last.last_steps if self.repeat_last_steps else 1
+        direction = "DOWN" if (is_less and last.direction == "UP") else "UP" if is_less else last.direction
+        ok = self._execute_intent(
+            last.base_intent,
+            {
+                **(last.entities or {}),
+                "direction": direction,
+                "magnitude_steps": steps_to_apply,
+            },
+        )
+        if not ok:
+            self.history.break_chain()
+            return False
+        action_intent = self._legacy_step_intent_name(last.base_intent, direction)
+        action_entities = {"steps": steps_to_apply}
+        self._set_last_command(command_text)
+        self._set_memory(action_intent, action_entities)
+        self._set_context(action_intent, action_entities)
+        self._record_action(action_intent, action_entities)
+        last2 = self.last_step_actions.get_if_fresh(ttl_seconds=12)
+        if last2:
+            self.follow_mode.activate(last2)
+        return True
+
+    def _handle_pending_numeric_flow(self, text: str) -> bool | None:
+        pending = self.follow_up.get_pending()
+        if not pending:
+            numeric = parse_numeric_input(text)
+            if numeric is not None:
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("not_now", "Not now.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            return None
+
+        numeric = parse_numeric_input(text)
+        if numeric is None:
+            attempts = self.follow_up.register_invalid_attempt()
+            if attempts >= 2:
+                self._cancel_pending(speak_cancelled=True)
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("need_number", "Say a number from one to ten.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
+        if pending.pending_type == PENDING_NEED_STEPS:
+            ok = self._execute_intent(
+                pending.base_intent,
+                {
+                    "direction": pending.direction,
+                    "magnitude_steps": numeric,
+                    **(pending.entities or {}),
+                },
+            )
+            self.follow_up.clear_pending()
+            if not ok:
+                self.history.break_chain()
+                return False
+            if pending.base_intent == "volume_change":
+                action_intent = "volume up" if pending.direction == "UP" else "volume down"
+            elif pending.base_intent == "brightness_change":
+                action_intent = "brightness up" if pending.direction == "UP" else "brightness down"
+            else:
+                action_intent = pending.base_intent
+            action_entities = {"steps": numeric}
+            self._set_last_command(text)
+            self._set_memory(action_intent, action_entities)
+            self._set_context(action_intent, action_entities)
+            self._record_action(action_intent, action_entities)
+            return True
+
+        if pending.pending_type == PENDING_NEED_CHOICE:
+            max_choice = int(pending.max_choice or 0)
+            if max_choice > 0 and 1 <= numeric <= max_choice:
+                self.follow_up.clear_pending()
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("choice_selected", "Selected.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return True
+            attempts = self.follow_up.register_invalid_attempt()
+            if attempts >= 2:
+                self._cancel_pending(speak_cancelled=True)
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("need_number", "Say a number from one to ten.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
+        self.follow_up.clear_pending()
         return False
 
     def _infer_intent_and_entities(self, text: str) -> tuple[str | None, dict]:
@@ -621,6 +795,65 @@ class Aidy:
         return None, {}
 
     def _execute_intent(self, intent: str, entities: dict) -> bool:
+        if intent == "volume_change":
+            direction = (entities.get("direction") or "").upper()
+            steps = max(1, min(10, int(entities.get("magnitude_steps") or entities.get("steps") or 1)))
+            if direction not in ("UP", "DOWN"):
+                return False
+            ui_state("SPEAKING")
+            if direction == "UP":
+                self.voice.play_or_tts("volume_up", VOICE_RESPONSES.get("volume up", "Increasing volume"))
+            else:
+                self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Decreasing volume"))
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            volume_steps(up=(direction == "UP"), steps=steps)
+            base_entities = dict(entities or {})
+            base_entities.pop("direction", None)
+            base_entities.pop("magnitude_steps", None)
+            base_entities.pop("steps", None)
+            self.last_step_actions.record("volume_change", direction, steps, base_entities)
+            last = self.last_step_actions.get_if_fresh(ttl_seconds=12)
+            if last:
+                self.follow_mode.activate(last)
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
+        if intent == "brightness_change":
+            direction = (entities.get("direction") or "").upper()
+            steps = max(1, min(10, int(entities.get("magnitude_steps") or entities.get("steps") or 1)))
+            if direction not in ("UP", "DOWN"):
+                return False
+            ui_state("SPEAKING")
+            if direction == "UP":
+                self.voice.play_or_tts("brightness_up", VOICE_RESPONSES.get("brightness up", "Increasing brightness"))
+            else:
+                self.voice.play_or_tts("brightness_down", VOICE_RESPONSES.get("brightness down", "Decreasing brightness"))
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            ok = brightness_steps(up=(direction == "UP"), steps=steps)
+            if not ok:
+                ui_state("ERROR")
+                self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                self._deafen_after_speak()
+                self._sleep_success()
+                ui_state("IDLE")
+                return False
+            base_entities = dict(entities or {})
+            base_entities.pop("direction", None)
+            base_entities.pop("magnitude_steps", None)
+            base_entities.pop("steps", None)
+            self.last_step_actions.record("brightness_change", direction, steps, base_entities)
+            last = self.last_step_actions.get_if_fresh(ttl_seconds=12)
+            if last:
+                self.follow_mode.activate(last)
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
         if intent == "set_volume":
             value = entities.get("value")
             if value is None:
@@ -836,7 +1069,7 @@ class Aidy:
 
     def _confirm_and_schedule(self, intent: str, entities: dict, delay_seconds: int) -> bool:
         ui_state("SPEAKING")
-        self.voice.play_or_tts("confirm", "Confirm or cancel.")
+        self.voice.play_or_tts("are_you_sure", "Are you sure?")
         self._deafen_after_speak()
 
         for attempt in range(2):
@@ -906,7 +1139,7 @@ class Aidy:
                 self.history.break_chain()
     def _confirm_and_execute(self, intent: str, exec_fn, original_text: str | None = None):
         ui_state("SPEAKING")
-        self.voice.play_or_tts("confirm", "Confirm or cancel.")
+        self.voice.play_or_tts("are_you_sure", "Are you sure?")
         self._deafen_after_speak()
 
         for attempt in range(2):
@@ -951,6 +1184,45 @@ class Aidy:
                     ui_state("IDLE")
                     self.history.break_chain()
                     return False
+
+            if t in CONFIRM_NO:
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+
+            if attempt == 0:
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("confirm_retry", "Please say confirm or cancel.")
+                self._deafen_after_speak()
+
+        ui_state("WARNING")
+        self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        self.history.break_chain()
+        return False
+
+    def _confirm_close_request(self) -> bool:
+        ui_state("SPEAKING")
+        self.voice.play_or_tts("are_you_sure", "Are you sure?")
+        self._deafen_after_speak()
+
+        for attempt in range(2):
+            reply = self.listen_command_vosk(max_seconds=6, min_listen_ms=1200, ui_state_label="CONFIRM")
+            if not reply:
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+
+            t = " ".join(reply.lower().split())
+            if t in CONFIRM_YES:
+                return True
 
             if t in CONFIRM_NO:
                 ui_state("WARNING")
@@ -1043,6 +1315,8 @@ class Aidy:
                 app = find_app(self.apps, app_id)
                 if not app:
                     return False
+                if not self._confirm_close_request():
+                    return False
                 ui_state("SPEAKING")
                 self.voice.play_or_tts("close_app", f"Closing {app['id']}")
                 self._deafen_after_speak()
@@ -1058,6 +1332,8 @@ class Aidy:
             if intent == "close active":
                 proc = (args.get("process") or "").strip()
                 if not proc:
+                    return False
+                if not self._confirm_close_request():
                     return False
                 proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
                 ui_state("SPEAKING")
@@ -1130,7 +1406,85 @@ class Aidy:
             self.history.break_chain()
             return False
 
-        t0 = (text or "").strip().lower()
+        t0 = " ".join((text or "").strip().lower().split())
+        pending_active = self.follow_up.get_pending() is not None
+
+        if t0 in ("cancel", "stop") and pending_active:
+            self._cancel_pending(speak_cancelled=True)
+            self.history.break_chain()
+            return False
+
+        if pending_active and (t0 in MORE_ACTION_PHRASES or t0 in LESS_ACTION_PHRASES):
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("need_number", "Say a number.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
+        pending_result = self._handle_pending_numeric_flow(text)
+        if pending_result is not None:
+            return pending_result
+
+        if self.follow_mode.is_active():
+            routed = classify_follow_input(
+                text=text,
+                wake_keywords=WAKE_KEYWORDS,
+                more_phrases=MORE_ACTION_PHRASES,
+                less_phrases=LESS_ACTION_PHRASES,
+                pending_active=False,
+            )
+            kind = routed.get("kind")
+            if kind == "other" and is_wake_phrase(t0):
+                kind = "wake"
+                routed = {"kind": "wake", "tail": ""}
+            if kind == "more":
+                return self._handle_more_less_action(is_less=False, command_text=text)
+            if kind == "less":
+                return self._handle_more_less_action(is_less=True, command_text=text)
+            if kind == "cancel":
+                self.follow_mode.clear()
+                self.last_step_actions.clear()
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("ok", "Okay.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            if kind == "wake":
+                self.follow_mode.clear()
+                tail = (routed.get("tail") or "").strip()
+                if tail:
+                    return self.process_command(tail)
+                ui_state("IDLE")
+                return False
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("follow_mode_hint", "Say 'more', 'less', or the wake word.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
+        if t0 in ("cancel", "stop"):
+            self.follow_mode.clear()
+            self.last_step_actions.clear()
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("cancelled", "Cancelled.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            self.history.break_chain()
+            return False
+
+        if t0 in MORE_ACTION_PHRASES:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("say_wake_word", "Say the wake word.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+        if t0 in LESS_ACTION_PHRASES:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("say_wake_word", "Say the wake word.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
         if t0 in UNMUTE_PHRASES:
             self.voice.muted = False
             ui_state("SPEAKING")
@@ -1186,7 +1540,7 @@ class Aidy:
                 self.history.break_chain()
                 return False
 
-            if intent in DANGEROUS_INTENTS:
+            if intent in DANGEROUS_INTENTS or intent in ("close app", "close active"):
                 return self._confirm_and_schedule(intent, entities, delay_seconds)
 
             task = Task(id=0, action_intent=intent, entities=entities, execute_at=0)
@@ -1240,6 +1594,9 @@ class Aidy:
                 ui_state("IDLE")
                 return False
 
+            if not self._confirm_close_request():
+                return False
+
             proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
 
             ui_state("SPEAKING")
@@ -1275,6 +1632,9 @@ class Aidy:
                 self._deafen_after_speak()
                 ui_state("IDLE")
                 self.history.break_chain()
+                return False
+
+            if not self._confirm_close_request():
                 return False
 
             ui_state("SPEAKING")
@@ -1336,61 +1696,25 @@ class Aidy:
                 self.history.break_chain()
                 return False
 
-        if t0 in ("volume up", "sound up", "increase volume", "louder", "make it louder"):
-            ui_state("SPEAKING")
-            self.voice.play_or_tts("volume_up", VOICE_RESPONSES.get("volume up", "Turning it up"))
-            self._deafen_after_speak()
-            ui_state("EXECUTING")
-            self._set_memory("volume up", {"steps": 6})
-            self._set_context("volume up", {"steps": 6})
-            self._record_action("volume up", {"steps": 6})
-            volume_steps(up=True, steps=6)
-            ui_state("SUCCESS")
-            self._sleep_success()
-            ui_state("IDLE")
-            return True
-
-        if t0 in ("volume down", "sound down", "decrease volume", "quieter", "make it quieter"):
-            ui_state("SPEAKING")
-            self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Turning it down"))
-            self._deafen_after_speak()
-            ui_state("EXECUTING")
-            self._set_memory("volume down", {"steps": 6})
-            self._set_context("volume down", {"steps": 6})
-            self._record_action("volume down", {"steps": 6})
-            volume_steps(up=False, steps=6)
-            ui_state("SUCCESS")
-            self._sleep_success()
-            ui_state("IDLE")
-            return True
-
-        if t0 in ("brightness up", "increase brightness", "brighten screen", "make screen brighter"):
-            ui_state("SPEAKING")
-            self.voice.play_or_tts("brightness_up", VOICE_RESPONSES.get("brightness up", "Making it brighter"))
-            self._deafen_after_speak()
-            ui_state("EXECUTING")
-            COMMANDS["brightness up"]()
-            self._set_memory("brightness up")
-            self._set_context("brightness up", {})
-            self._record_action("brightness up", {})
-            ui_state("SUCCESS")
-            self._sleep_success()
-            ui_state("IDLE")
-            return True
-
-        if t0 in ("brightness down", "decrease brightness", "dim screen", "make screen darker"):
-            ui_state("SPEAKING")
-            self.voice.play_or_tts("brightness_down", VOICE_RESPONSES.get("brightness down", "Making it dimmer"))
-            self._deafen_after_speak()
-            ui_state("EXECUTING")
-            COMMANDS["brightness down"]()
-            self._set_memory("brightness down")
-            self._set_context("brightness down", {})
-            self._record_action("brightness down", {})
-            ui_state("SUCCESS")
-            self._sleep_success()
-            ui_state("IDLE")
-            return True
+        step_intent = detect_step_intent_from_text(t0)
+        if step_intent:
+            steps = extract_steps_value(text)
+            if steps is None:
+                cfg = STEP_REQUIRED[step_intent]
+                self.follow_up.set_pending(
+                    PendingAction(
+                        pending_type=PENDING_NEED_STEPS,
+                        base_intent=cfg["base"],
+                        direction=cfg["direction"],
+                        entities={},
+                    )
+                )
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("how_much", "How much?")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            return self._execute_step_intent(step_intent, steps, text)
 
         # Direct app name without "open"/"launch" (e.g., "steam", "chrome")
         app = find_app(self.apps, t0)
@@ -1504,59 +1828,31 @@ class Aidy:
             self.history.break_chain()
             return False
 
-        if intent in ("volume up", "volume down"):
-            n = parse_first_int(text)
-            up = (intent == "volume up")
-            t = (text or "").lower()
-            wants_absolute = (" to " in f" {t} ") or ("%" in t) or ("percent" in t)
-
-            if n is None:
-                steps = 6
+        step_intent = api_intent_to_step_intent(intent)
+        if step_intent:
+            steps = extract_steps_value(text)
+            if steps is None:
+                cfg = STEP_REQUIRED[step_intent]
+                self.follow_up.set_pending(
+                    PendingAction(
+                        pending_type=PENDING_NEED_STEPS,
+                        base_intent=cfg["base"],
+                        direction=cfg["direction"],
+                        entities={},
+                    )
+                )
                 ui_state("SPEAKING")
-                self.voice.play_or_tts(intent.replace(" ", "_"), VOICE_RESPONSES.get(intent, "Adjusting volume"))
+                self.voice.play_or_tts("how_much", "How much?")
                 self._deafen_after_speak()
-                ui_state("EXECUTING")
-                self._set_last_command(text)
-                self._set_memory(intent, {"steps": steps})
-                self._set_context(intent, {"steps": steps})
-                self._record_action(intent, {"steps": steps})
-                volume_steps(up, steps)
-                ui_state("SUCCESS")
-                self._sleep_success()
                 ui_state("IDLE")
-                return True
+                return False
+            return self._execute_step_intent(step_intent, steps, text)
 
-            if wants_absolute:
-                ui_state("SPEAKING")
-                self.voice.play_or_tts("set_volume", f"Setting volume to {n} percent")
-                self._deafen_after_speak()
-                ui_state("EXECUTING")
-                self._set_last_command(text)
-                self._set_memory("set_volume", {"value": n})
-                self._set_context("set_volume", {"value": n})
-                self._record_action("set_volume", {"value": n})
-                ok = set_volume_percent(n)
-                if not ok:
-                    volume_steps(up=True, steps=1)
-                ui_state("SUCCESS")
-                self._sleep_success()
-                ui_state("IDLE")
-                return True
-
-            steps = max(1, n)
-            ui_state("SPEAKING")
-            self.voice.play_or_tts(intent.replace(" ", "_"), VOICE_RESPONSES.get(intent, "Adjusting volume"))
-            self._deafen_after_speak()
-            ui_state("EXECUTING")
-            self._set_last_command(text)
-            self._set_memory(intent, {"steps": steps})
-            self._set_context(intent, {"steps": steps})
-            self._record_action(intent, {"steps": steps})
-            volume_steps(up, steps)
-            ui_state("SUCCESS")
-            self._sleep_success()
-            ui_state("IDLE")
-            return True
+        intent_key = intent.replace(" ", "_")
+        if intent_key == "more_action":
+            return self._handle_more_less_action(is_less=False, command_text=text)
+        if intent_key == "less_action":
+            return self._handle_more_less_action(is_less=True, command_text=text)
 
         if intent == "switch window":
             ui_state("EXECUTING")
@@ -1620,6 +1916,9 @@ class Aidy:
                 self._deafen_after_speak()
                 ui_state("IDLE")
                 self.history.break_chain()
+                return False
+
+            if not self._confirm_close_request():
                 return False
 
             ui_state("SPEAKING")
@@ -1733,6 +2032,57 @@ class Aidy:
                             self.end_window_switch(cancel=True)
                     continue
 
+                if self.follow_up.get_pending():
+                    self._handle_due_tasks()
+                    cmd_text = self.listen_command_vosk(
+                        max_seconds=8,
+                        min_listen_ms=800,
+                        ui_state_label="FOLLOWUP",
+                    )
+                    if cmd_text:
+                        self._safe_process_command(cmd_text)
+                    else:
+                        self.follow_up.clear_pending()
+                        ui_state("IDLE")
+                    continue
+
+                if self.follow_mode.is_active():
+                    self._handle_due_tasks()
+                    cmd_text = self.listen_command_vosk(
+                        max_seconds=6,
+                        min_listen_ms=700,
+                        ui_state_label="LISTENING",
+                    )
+                    if cmd_text:
+                        routed = classify_follow_input(
+                            text=cmd_text,
+                            wake_keywords=WAKE_KEYWORDS,
+                            more_phrases=MORE_ACTION_PHRASES,
+                            less_phrases=LESS_ACTION_PHRASES,
+                            pending_active=False,
+                        )
+                        if routed.get("kind") == "other" and is_wake_phrase(cmd_text):
+                            routed = {"kind": "wake", "tail": ""}
+                        if routed.get("kind") == "wake":
+                            self.follow_mode.clear()
+                            tail = (routed.get("tail") or "").strip()
+                            ui_state("PROCESSING")
+                            self.voice.play_or_tts("wake", "I am here, sir")
+                            self._deafen_after_speak()
+                            if tail:
+                                self._safe_process_command(tail)
+                            else:
+                                cmd2 = self.listen_command_vosk(max_seconds=20)
+                                if cmd2:
+                                    self._safe_process_command(cmd2)
+                                else:
+                                    ui_state("IDLE")
+                            continue
+                        self._safe_process_command(cmd_text)
+                    else:
+                        ui_state("IDLE")
+                    continue
+
                 self.wait_for_wake()
                 self._handle_due_tasks()
                 cmd_text = self.listen_command_vosk(max_seconds=20)
@@ -1753,6 +2103,8 @@ class Aidy:
             self.stop_stream()
             self.audio.terminate()
             info("AIDY stopped")
+
+
 
 
 

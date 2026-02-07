@@ -186,6 +186,27 @@
             <DoubleAnimation Storyboard.TargetName="NeonShadow" Storyboard.TargetProperty="Opacity" From="0.18" To="0.32" Duration="0:0:2.1" AutoReverse="True" RepeatBehavior="Forever"/>
         </Storyboard>
 
+        <!-- FOLLOWUP (yellow) -->
+        <Storyboard x:Key="SB_Ring_FollowUp" RepeatBehavior="Forever">
+            <ColorAnimation Storyboard.TargetName="RingStop1" Storyboard.TargetProperty="Color" To="#FFD84A" Duration="0:0:0.35"/>
+            <ColorAnimation Storyboard.TargetName="RingStop2" Storyboard.TargetProperty="Color" To="#FFE25F" Duration="0:0:0.35"/>
+            <ColorAnimation Storyboard.TargetName="RingStop3" Storyboard.TargetProperty="Color" To="#FFD84A" Duration="0:0:0.35"/>
+            <ColorAnimation Storyboard.TargetName="NeonShadow" Storyboard.TargetProperty="Color" To="#FFD84A" Duration="0:0:0.35"/>
+
+            <DoubleAnimation Storyboard.TargetName="RingScale" Storyboard.TargetProperty="ScaleX" From="1.00" To="1.03" Duration="0:0:2.1" AutoReverse="True" RepeatBehavior="Forever">
+                <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut"/>
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="RingScale" Storyboard.TargetProperty="ScaleY" From="1.00" To="1.03" Duration="0:0:2.1" AutoReverse="True" RepeatBehavior="Forever">
+                <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut"/>
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+
+            <DoubleAnimation Storyboard.TargetName="NeonShadow" Storyboard.TargetProperty="Opacity" From="0.20" To="0.36" Duration="0:0:2.1" AutoReverse="True" RepeatBehavior="Forever"/>
+        </Storyboard>
+
         <!-- ERROR -->
         <Storyboard x:Key="SB_Ring_Error">
             <ColorAnimation Storyboard.TargetName="RingStop1" Storyboard.TargetProperty="Color" To="#FF3B5C" Duration="0:0:0.15"/>
