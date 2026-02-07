@@ -52,9 +52,9 @@
 
         <!-- LISTENING -->
         <Storyboard x:Key="SB_Ring_Listening" RepeatBehavior="Forever">
-            <ColorAnimation Storyboard.TargetName="RingStop1" Storyboard.TargetProperty="Color" To="#4CC3FF" Duration="0:0:0.25"/>
-            <ColorAnimation Storyboard.TargetName="RingStop2" Storyboard.TargetProperty="Color" To="#3E7BFF" Duration="0:0:0.25"/>
-            <ColorAnimation Storyboard.TargetName="RingStop3" Storyboard.TargetProperty="Color" To="#4CC3FF" Duration="0:0:0.25"/>
+            <ColorAnimation Storyboard.TargetName="RingStop1" Storyboard.TargetProperty="Color" To="#41EED7" Duration="0:0:0.25"/>
+            <ColorAnimation Storyboard.TargetName="RingStop2" Storyboard.TargetProperty="Color" To="#28B9FF" Duration="0:0:0.25"/>
+            <ColorAnimation Storyboard.TargetName="RingStop3" Storyboard.TargetProperty="Color" To="#41EED7" Duration="0:0:0.25"/>
 
             <DoubleAnimation Storyboard.TargetName="RingScale" Storyboard.TargetProperty="ScaleX"
                              From="1.00" To="1.06" Duration="0:0:1.25" AutoReverse="True" RepeatBehavior="Forever">
@@ -691,6 +691,97 @@
                                                 </Grid.Effect>
                                             </Grid>
                                             <!-- это закрывает Grid x:Name="Wave" -->
+
+                                            <Grid x:Name="ListeningMic"
+          Width="130" Height="130"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          Visibility="Collapsed"
+          Opacity="0.96">
+                                                <Grid.Effect>
+                                                    <DropShadowEffect Color="#41EED7" Opacity="0.5" BlurRadius="18" ShadowDepth="0"/>
+                                                </Grid.Effect>
+                                                <Canvas Width="100" Height="118" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <Border Width="40" Height="58" CornerRadius="20" Background="#68FFE8" Canvas.Left="30" Canvas.Top="10"/>
+
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="20" Canvas.Top="24"/>
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="20" Canvas.Top="34"/>
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="20" Canvas.Top="44"/>
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="20" Canvas.Top="54"/>
+
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="64" Canvas.Top="24"/>
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="64" Canvas.Top="34"/>
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="64" Canvas.Top="44"/>
+                                                    <Border Width="16" Height="4" CornerRadius="2" Background="#09111F" Canvas.Left="64" Canvas.Top="54"/>
+
+                                                    <Path Data="M22,62 A28,28 0 0 0 78,62" Stroke="#68FFE8" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                    <Border Width="10" Height="18" CornerRadius="5" Background="#68FFE8" Canvas.Left="45" Canvas.Top="78"/>
+                                                    <Border Width="50" Height="10" CornerRadius="5" Background="#68FFE8" Canvas.Left="25" Canvas.Top="96"/>
+                                                </Canvas>
+                                            </Grid>
+
+                                            <!-- speaking waveform overlay -->
+                                            <Grid x:Name="SpeakingWave"
+          Width="220" Height="86"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          Visibility="Collapsed"
+          Opacity="0.95">
+                                                <Grid.Effect>
+                                                    <DropShadowEffect Color="#FF4FB8" Opacity="0.45" BlurRadius="16" ShadowDepth="0"/>
+                                                </Grid.Effect>
+                                                <StackPanel x:Name="SpeakingBars" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <Border Width="8" Height="18" CornerRadius="4" Background="#FF77D4" Margin="3,0"/>
+                                                    <Border Width="8" Height="28" CornerRadius="4" Background="#FF5FC3" Margin="3,0"/>
+                                                    <Border Width="8" Height="14" CornerRadius="4" Background="#FF90E1" Margin="3,0"/>
+                                                    <Border Width="8" Height="42" CornerRadius="4" Background="#FF4FB8" Margin="3,0"/>
+                                                    <Border Width="8" Height="58" CornerRadius="4" Background="#FF67C9" Margin="3,0"/>
+                                                    <Border Width="8" Height="32" CornerRadius="4" Background="#FF7ED8" Margin="3,0"/>
+                                                    <Border Width="8" Height="70" CornerRadius="4" Background="#FF4FB8" Margin="3,0"/>
+                                                    <Border Width="8" Height="24" CornerRadius="4" Background="#FF86DD" Margin="3,0"/>
+                                                    <Border Width="8" Height="54" CornerRadius="4" Background="#FF58BE" Margin="3,0"/>
+                                                    <Border Width="8" Height="74" CornerRadius="4" Background="#FF4FB8" Margin="3,0"/>
+                                                    <Border Width="8" Height="38" CornerRadius="4" Background="#FF6FCC" Margin="3,0"/>
+                                                    <Border Width="8" Height="22" CornerRadius="4" Background="#FF93E4" Margin="3,0"/>
+                                                    <Border Width="8" Height="64" CornerRadius="4" Background="#FF55BB" Margin="3,0"/>
+                                                    <Border Width="8" Height="30" CornerRadius="4" Background="#FF80D9" Margin="3,0"/>
+                                                    <Border Width="8" Height="48" CornerRadius="4" Background="#FF62C6" Margin="3,0"/>
+                                                    <Border Width="8" Height="20" CornerRadius="4" Background="#FF8EE0" Margin="3,0"/>
+                                                    <Border Width="8" Height="40" CornerRadius="4" Background="#FF4FB8" Margin="3,0"/>
+                                                    <Border Width="8" Height="26" CornerRadius="4" Background="#FF79D5" Margin="3,0"/>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <Grid x:Name="FollowUpWave"
+          Width="220" Height="86"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          Visibility="Collapsed"
+          Opacity="0.95">
+                                                <Grid.Effect>
+                                                    <DropShadowEffect Color="#FFD84A" Opacity="0.5" BlurRadius="16" ShadowDepth="0"/>
+                                                </Grid.Effect>
+                                                <StackPanel x:Name="FollowUpBars" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <Border Width="8" Height="20" CornerRadius="4" Background="#FFE27A" Margin="3,0"/>
+                                                    <Border Width="8" Height="26" CornerRadius="4" Background="#FFD85A" Margin="3,0"/>
+                                                    <Border Width="8" Height="16" CornerRadius="4" Background="#FFF0A3" Margin="3,0"/>
+                                                    <Border Width="8" Height="38" CornerRadius="4" Background="#FFD84A" Margin="3,0"/>
+                                                    <Border Width="8" Height="52" CornerRadius="4" Background="#FFE067" Margin="3,0"/>
+                                                    <Border Width="8" Height="30" CornerRadius="4" Background="#FFED93" Margin="3,0"/>
+                                                    <Border Width="8" Height="66" CornerRadius="4" Background="#FFD84A" Margin="3,0"/>
+                                                    <Border Width="8" Height="24" CornerRadius="4" Background="#FFF1AA" Margin="3,0"/>
+                                                    <Border Width="8" Height="46" CornerRadius="4" Background="#FFDB55" Margin="3,0"/>
+                                                    <Border Width="8" Height="72" CornerRadius="4" Background="#FFD84A" Margin="3,0"/>
+                                                    <Border Width="8" Height="34" CornerRadius="4" Background="#FFE06E" Margin="3,0"/>
+                                                    <Border Width="8" Height="22" CornerRadius="4" Background="#FFF2B3" Margin="3,0"/>
+                                                    <Border Width="8" Height="60" CornerRadius="4" Background="#FFD94D" Margin="3,0"/>
+                                                    <Border Width="8" Height="28" CornerRadius="4" Background="#FFEE98" Margin="3,0"/>
+                                                    <Border Width="8" Height="42" CornerRadius="4" Background="#FFE16F" Margin="3,0"/>
+                                                    <Border Width="8" Height="18" CornerRadius="4" Background="#FFF5C0" Margin="3,0"/>
+                                                    <Border Width="8" Height="36" CornerRadius="4" Background="#FFDB57" Margin="3,0"/>
+                                                    <Border Width="8" Height="24" CornerRadius="4" Background="#FFE786" Margin="3,0"/>
+                                                </StackPanel>
+                                            </Grid>
 
                                         </Grid>
 

@@ -424,10 +424,11 @@ class Aidy:
                     last_log_t = now
 
                 if is_wake_phrase(text):
-                    ui_state("PROCESSING")
                     info(f'Wake detected: "{text}"')
+                    ui_state("SPEAKING")
                     self.voice.play_or_tts("wake", "I am here, sir")
                     self._deafen_after_speak()
+                    ui_state("IDLE")
                     return
 
     def listen_command_vosk(self, max_seconds=6, min_listen_ms=2000, ui_state_label="LISTENING"):
@@ -2066,7 +2067,7 @@ class Aidy:
                         if routed.get("kind") == "wake":
                             self.follow_mode.clear()
                             tail = (routed.get("tail") or "").strip()
-                            ui_state("PROCESSING")
+                            ui_state("SPEAKING")
                             self.voice.play_or_tts("wake", "I am here, sir")
                             self._deafen_after_speak()
                             if tail:

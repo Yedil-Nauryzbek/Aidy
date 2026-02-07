@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Navigation;
+using System.Windows.Threading;
 using WpfApp1.Models;
 using WpfApp1.Services;
 using WpfApp1.ViewModels;
@@ -27,6 +28,9 @@ namespace WpfApp1.Views
         private DoubleAnimation _waveOff = null!;
         private DoubleAnimation _waveSpeaking = null!;
         private DoubleAnimation _waveProcessing = null!;
+        private readonly DispatcherTimer _waveformTimer;
+        private readonly Random _waveformRandom = new();
+        private bool _waveformAnimating;
 
         // ===== Ring storyboard controller =====
         private Storyboard? _ringSb;
@@ -51,6 +55,12 @@ namespace WpfApp1.Views
                 workingDir: baseDir
             );
 
+            _waveformTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(70)
+            };
+            _waveformTimer.Tick += WaveformTimerOnTick;
+
             _bridge.StateChanged += s => Dispatcher.Invoke(() => { _vm.CurrentState = s; Console.WriteLine($"[UI] State changed to {s}"); });
             _bridge.LogLine += line => Dispatcher.Invoke(() => _vm.LogText += line + "\n");
 
@@ -70,6 +80,82 @@ namespace WpfApp1.Views
             };
 
             Closing += (_, __) => _bridge.Dispose();
+        }
+
+        private void WaveformTimerOnTick(object? sender, EventArgs e)
+        {
+            if (SpeakingWave.Visibility == Visibility.Visible)
+            {
+                AnimateBarHeights(
+                    SpeakingBars,
+                    edgeMinHeight: 10,
+                    edgeMaxHeight: 50,
+                    centerMinHeight: 24,
+                    centerMaxHeight: 88,
+                    blend: 0.68);
+            }
+
+            if (FollowUpWave.Visibility == Visibility.Visible)
+            {
+                AnimateBarHeights(
+                    FollowUpBars,
+                    edgeMinHeight: 10,
+                    edgeMaxHeight: 46,
+                    centerMinHeight: 22,
+                    centerMaxHeight: 82,
+                    blend: 0.64);
+            }
+
+            if (SpeakingWave.Visibility != Visibility.Visible && FollowUpWave.Visibility != Visibility.Visible)
+            {
+                StopWaveformAnimation();
+            }
+        }
+
+        private void AnimateBarHeights(
+            Panel barsPanel,
+            double edgeMinHeight,
+            double edgeMaxHeight,
+            double centerMinHeight,
+            double centerMaxHeight,
+            double blend)
+        {
+            var count = barsPanel.Children.Count;
+            if (count == 0) return;
+
+            var mid = (count - 1) / 2.0;
+
+            for (var i = 0; i < count; i++)
+            {
+                if (barsPanel.Children[i] is not Border bar) continue;
+
+                var distNorm = mid <= 0 ? 0 : Math.Abs(i - mid) / mid;
+                var centerFactor = 1.0 - distNorm;
+
+                var minHeight = edgeMinHeight + (centerMinHeight - edgeMinHeight) * centerFactor;
+                var maxHeight = edgeMaxHeight + (centerMaxHeight - edgeMaxHeight) * centerFactor;
+
+                var span = Math.Max(1, maxHeight - minHeight);
+                var target = minHeight + _waveformRandom.NextDouble() * span;
+                target += (_waveformRandom.NextDouble() - 0.5) * span * 0.22;
+                target = Math.Clamp(target, minHeight, maxHeight);
+
+                bar.Height += (target - bar.Height) * blend;
+            }
+        }
+
+        private void StartWaveformAnimation()
+        {
+            if (_waveformAnimating) return;
+            _waveformAnimating = true;
+            _waveformTimer.Start();
+        }
+
+        private void StopWaveformAnimation()
+        {
+            if (!_waveformAnimating) return;
+            _waveformAnimating = false;
+            _waveformTimer.Stop();
         }
 
         private void VmOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -219,6 +305,11 @@ namespace WpfApp1.Views
             OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
             WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
             WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+            Wave.Visibility = Visibility.Visible;
+            ListeningMic.Visibility = Visibility.Collapsed;
+            SpeakingWave.Visibility = Visibility.Collapsed;
+            FollowUpWave.Visibility = Visibility.Collapsed;
+            StopWaveformAnimation();
 
             // ===== Ring storyboard by state =====
             switch (state)
@@ -284,6 +375,8 @@ namespace WpfApp1.Views
 
                 case AidyState.Listening:
                     Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
+                    ListeningMic.Visibility = Visibility.Visible;
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
@@ -302,6 +395,8 @@ namespace WpfApp1.Views
 
                 case AidyState.Speaking:
                     Wave.Opacity = 1;
+                    SpeakingWave.Visibility = Visibility.Visible;
+                    StartWaveformAnimation();
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
@@ -319,6 +414,8 @@ namespace WpfApp1.Views
                     break;
                 case AidyState.FollowUp:
                     Wave.Opacity = 1;
+                    FollowUpWave.Visibility = Visibility.Visible;
+                    StartWaveformAnimation();
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
