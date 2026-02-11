@@ -26,6 +26,8 @@ class TestDecisionCore(unittest.TestCase):
         self.assertEqual(parse_numeric_input("tin"), 10)
         self.assertEqual(parse_numeric_input("number three"), 3)
         self.assertEqual(extract_steps_value("increase volume number four"), 4)
+        self.assertEqual(extract_steps_value("hey ten"), 10)
+        self.assertEqual(extract_steps_value("okay three"), 3)
 
     def test_increase_volume_then_numeric(self):
         calls = []
@@ -38,7 +40,7 @@ class TestDecisionCore(unittest.TestCase):
         r1 = core.handle_step_intent("volume_up", {})
         self.assertTrue(r1["handled"])
         self.assertFalse(r1["executed"])
-        self.assertEqual(r1["prompt"], "How much?")
+        self.assertEqual(r1["prompt"], "By how much?")
         pending = core.follow_up.get_pending()
         self.assertIsNotNone(pending)
         self.assertEqual(pending.pending_type, PENDING_NEED_STEPS)
@@ -112,7 +114,7 @@ class TestDecisionCore(unittest.TestCase):
         core = DecisionCore(executor=executor, step_required=custom_registry)
 
         r1 = core.handle_step_intent("scroll_up", {})
-        self.assertEqual(r1["prompt"], "How much?")
+        self.assertEqual(r1["prompt"], "By how much?")
         r2 = core.handle_numeric_input(2)
         self.assertTrue(r2["executed"])
         self.assertEqual(calls[0][0], "scroll_change")

@@ -6,6 +6,7 @@ namespace WpfApp1.Models
         Starting,    // app/core booting
         Idle,        // READY
         Listening,   // mic listening
+        CommandListening, // listening right after wake word
         Processing,  // thinking/processing
         Speaking,    // TTS speaking
         Confirming,  // awaiting confirmation

@@ -8,7 +8,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from aidy.scheduler import TaskScheduler, Task
-from aidy.delay import parse_delay_request
+from aidy.delay import parse_delay_request, parse_timer_duration_seconds
 
 
 class TestScheduler(unittest.TestCase):
@@ -71,6 +71,21 @@ class TestScheduler(unittest.TestCase):
         action, delay = parsed
         self.assertEqual(action, "open chrome")
         self.assertEqual(delay, 30)
+
+    def test_timer_duration_minutes_default(self):
+        self.assertEqual(parse_timer_duration_seconds("5"), 300)
+
+    def test_timer_duration_with_minutes(self):
+        self.assertEqual(parse_timer_duration_seconds("for 7 minutes"), 420)
+
+    def test_timer_duration_with_seconds(self):
+        self.assertEqual(parse_timer_duration_seconds("10 sec"), 10)
+
+    def test_timer_duration_word_number(self):
+        self.assertEqual(parse_timer_duration_seconds("five minutes"), 300)
+
+    def test_timer_duration_translit(self):
+        self.assertEqual(parse_timer_duration_seconds("postav taymer na pyat minut"), 300)
 
 
 if __name__ == "__main__":

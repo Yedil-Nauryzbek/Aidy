@@ -187,3 +187,19 @@ def get_active_window_info() -> dict | None:
         return {"pid": pid_val, "process": proc, "title": title}
     except Exception:
         return None
+
+
+def close_active_tab() -> bool:
+    try:
+        pyautogui.hotkey("ctrl", "w")
+        return True
+    except Exception:
+        return False
+
+
+def switch_to_previous_window() -> bool:
+    try:
+        pyautogui.hotkey("alt", "tab")
+        return True
+    except Exception:
+        return False

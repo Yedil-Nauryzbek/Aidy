@@ -6,6 +6,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Navigation;
@@ -31,6 +32,39 @@ namespace WpfApp1.Views
         private readonly DispatcherTimer _waveformTimer;
         private readonly Random _waveformRandom = new();
         private bool _waveformAnimating;
+        private const int WM_NCHITTEST = 0x0084;
+        private const int HTTRANSPARENT = -1;
+        private bool _isCompactMode;
+        private string _pageBeforeCompact = "AIDY";
+        private readonly double _normalShellWidth = 1413;
+        private readonly double _normalShellHeight = 743;
+        private readonly double _compactShellWidth = 460;
+        private readonly double _compactShellHeight = 520;
+        private readonly GridLength _normalSidebarWidth = new(290);
+        private readonly GridLength _normalTitleRowHeight = new(64);
+        private readonly GridLength _compactTitleRowHeight = new(56);
+        private readonly Thickness _normalOrbMargin = new(0, 140, 0, 0);
+        private readonly Thickness _compactOrbMargin = new(-24, 10, 0, 0);
+        private readonly double _normalOrbScale = 1.0;
+        private readonly double _compactOrbScale = 0.78;
+        private static readonly string[] WakeDebugMarkers =
+        {
+            "[WAKE]",
+            "[CMD]",
+            "Wake:",
+            "Wake Heard:",
+            "Wake detected",
+            "Command: listening",
+            "Heard:",
+            "VAD:",
+            "audio stream",
+            "Failed to start audio stream",
+            "API connection error",
+            "STATE:LISTENING",
+            "STATE:COMMAND_LISTENING",
+            "STATE:WARNING",
+            "STATE:ERROR",
+        };
 
         // ===== Ring storyboard controller =====
         private Storyboard? _ringSb;
@@ -38,6 +72,7 @@ namespace WpfApp1.Views
         public MainWindow()
         {
             InitializeComponent();
+            SourceInitialized += (_, __) => AttachOuterAreaClickThrough();
 
             AutoStart.Enable();
 
@@ -62,7 +97,8 @@ namespace WpfApp1.Views
             _waveformTimer.Tick += WaveformTimerOnTick;
 
             _bridge.StateChanged += s => Dispatcher.Invoke(() => { _vm.CurrentState = s; Console.WriteLine($"[UI] State changed to {s}"); });
-            _bridge.LogLine += line => Dispatcher.Invoke(() => _vm.LogText += line + "\n");
+            // Logs are intentionally hidden from UI.
+            // _bridge.LogLine += line => Dispatcher.Invoke(() => AppendBridgeLogLine(line));
 
             // Show last command, but hide internal/system keywords (exit, etc.)
             _bridge.CommandHeard += t => Dispatcher.Invoke(() =>
@@ -80,6 +116,51 @@ namespace WpfApp1.Views
             };
 
             Closing += (_, __) => _bridge.Dispose();
+        }
+
+        private void AttachOuterAreaClickThrough()
+        {
+            if (PresentationSource.FromVisual(this) is HwndSource source)
+            {
+                source.AddHook(WndProc);
+            }
+        }
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg != WM_NCHITTEST)
+            {
+                return IntPtr.Zero;
+            }
+
+            if (MainShell.ActualWidth <= 0 || MainShell.ActualHeight <= 0)
+            {
+                return IntPtr.Zero;
+            }
+
+            var screenX = (short)((long)lParam & 0xFFFF);
+            var screenY = (short)(((long)lParam >> 16) & 0xFFFF);
+            var windowPoint = PointFromScreen(new Point(screenX, screenY));
+
+            Rect shellBounds;
+            try
+            {
+                shellBounds = MainShell.TransformToAncestor(this).TransformBounds(
+                    new Rect(0, 0, MainShell.ActualWidth, MainShell.ActualHeight)
+                );
+            }
+            catch
+            {
+                return IntPtr.Zero;
+            }
+
+            if (!shellBounds.Contains(windowPoint))
+            {
+                handled = true;
+                return new IntPtr(HTTRANSPARENT);
+            }
+
+            return IntPtr.Zero;
         }
 
         private void WaveformTimerOnTick(object? sender, EventArgs e)
@@ -162,6 +243,33 @@ namespace WpfApp1.Views
         {
             if (e.PropertyName == nameof(MainViewModel.CurrentState))
                 ApplyState(_vm.CurrentState);
+        }
+
+        private void AppendBridgeLogLine(string line)
+        {
+            _vm.AppendLogLine(line);
+            if (IsWakeDebugLine(line))
+            {
+                _vm.AppendWakeDebugLine(line);
+            }
+        }
+
+        private static bool IsWakeDebugLine(string? line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            foreach (var marker in WakeDebugMarkers)
+            {
+                if (line.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // =========================
@@ -323,6 +431,9 @@ namespace WpfApp1.Views
                 case AidyState.Listening:
                     StartRing("SB_Ring_Listening");
                     break;
+                case AidyState.CommandListening:
+                    StartRing("SB_Ring_Listening");
+                    break;
                 case AidyState.Processing:
                     StartRing("SB_Ring_Processing");
                     break;
@@ -374,6 +485,7 @@ namespace WpfApp1.Views
                     break;
 
                 case AidyState.Listening:
+                case AidyState.CommandListening:
                     Wave.Opacity = 1;
                     Wave.Visibility = Visibility.Collapsed;
                     ListeningMic.Visibility = Visibility.Visible;
@@ -469,8 +581,95 @@ namespace WpfApp1.Views
         // =========================
         // WINDOW CHROME
         // =========================
+        private void CompactToggle_Click(object sender, RoutedEventArgs e)
+        {
+            SetCompactMode(!_isCompactMode);
+        }
+
+        private string GetCurrentPage()
+        {
+            if (CommandsPage.Visibility == Visibility.Visible) return "COMMANDS";
+            if (ContactsPage.Visibility == Visibility.Visible) return "CONTACTS";
+            if (SettingsPage.Visibility == Visibility.Visible) return "SETTINGS";
+            return "AIDY";
+        }
+
+        private void SetCompactMode(bool enabled)
+        {
+            _isCompactMode = enabled;
+
+            if (enabled)
+            {
+                _pageBeforeCompact = GetCurrentPage();
+                ShowPage("AIDY");
+
+                if (WindowState == WindowState.Maximized)
+                {
+                    WindowState = WindowState.Normal;
+                }
+
+                SidebarPanel.Visibility = Visibility.Collapsed;
+                SidebarColumn.Width = new GridLength(0);
+                MainColumn.Width = new GridLength(1, GridUnitType.Star);
+
+                MainShell.Width = _compactShellWidth;
+                MainShell.Height = _compactShellHeight;
+                TitleBarRow.Height = _compactTitleRowHeight;
+
+                AidyHeader.Visibility = Visibility.Collapsed;
+                CompactStateHost.Visibility = Visibility.Visible;
+                OrbHost.VerticalAlignment = VerticalAlignment.Center;
+                OrbHost.Margin = _compactOrbMargin;
+                OrbScale.ScaleX = _compactOrbScale;
+                OrbScale.ScaleY = _compactOrbScale;
+
+                MinimizeButton.Visibility = Visibility.Visible;
+                MaximizeButton.Visibility = Visibility.Visible;
+                CloseButton.Visibility = Visibility.Visible;
+                CompactToWindowsSpacer.Visibility = Visibility.Visible;
+                MinimizeToMaximizeSpacer.Visibility = Visibility.Visible;
+                MaximizeToCloseSpacer.Visibility = Visibility.Visible;
+
+                CompactIconInward.Visibility = Visibility.Collapsed;
+                CompactIconOutward.Visibility = Visibility.Visible;
+                return;
+            }
+
+            SidebarPanel.Visibility = Visibility.Visible;
+            SidebarColumn.Width = _normalSidebarWidth;
+            MainColumn.Width = new GridLength(1, GridUnitType.Star);
+
+            MainShell.Width = _normalShellWidth;
+            MainShell.Height = _normalShellHeight;
+            TitleBarRow.Height = _normalTitleRowHeight;
+
+            AidyHeader.Visibility = Visibility.Visible;
+            CompactStateHost.Visibility = Visibility.Collapsed;
+            OrbHost.VerticalAlignment = VerticalAlignment.Top;
+            OrbHost.Margin = _normalOrbMargin;
+            OrbScale.ScaleX = _normalOrbScale;
+            OrbScale.ScaleY = _normalOrbScale;
+
+            MinimizeButton.Visibility = Visibility.Visible;
+            MaximizeButton.Visibility = Visibility.Visible;
+            CloseButton.Visibility = Visibility.Visible;
+            CompactToWindowsSpacer.Visibility = Visibility.Visible;
+            MinimizeToMaximizeSpacer.Visibility = Visibility.Visible;
+            MaximizeToCloseSpacer.Visibility = Visibility.Visible;
+
+            CompactIconInward.Visibility = Visibility.Visible;
+            CompactIconOutward.Visibility = Visibility.Collapsed;
+
+            ShowPage(_pageBeforeCompact);
+        }
+
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (_isCompactMode)
+            {
+                if (e.ButtonState == MouseButtonState.Pressed) DragMove();
+                return;
+            }
             if (e.ClickCount == 2) { ToggleMaximize(); return; }
             if (e.ButtonState == MouseButtonState.Pressed) DragMove();
         }
@@ -520,6 +719,22 @@ namespace WpfApp1.Views
         }
 
         private void ToggleMaximize()
-            => WindowState = (WindowState == WindowState.Maximized) ? WindowState.Normal : WindowState.Maximized;
+        {
+            if (_isCompactMode) return;
+            WindowState = (WindowState == WindowState.Maximized) ? WindowState.Normal : WindowState.Maximized;
+        }
+
+        private void ClearWakeDebug_Click(object sender, RoutedEventArgs e)
+        {
+            _vm.ClearWakeDebugLog();
+        }
+
+        private void WakeDebugTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is TextBox tb)
+            {
+                tb.ScrollToEnd();
+            }
+        }
     }
 }

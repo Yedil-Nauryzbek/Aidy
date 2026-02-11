@@ -17,6 +17,7 @@ namespace WpfApp1.Services
 
         public event Action<AidyState>? StateChanged;
         public event Action<string>? CommandHeard;
+        public event Action<string, int, int>? TimerChanged;
         public event Action<string>? LogLine;
 
         public PythonBridge(string pythonExe, string scriptPath, string workingDir)
@@ -160,6 +161,7 @@ namespace WpfApp1.Services
                     "STARTING" => AidyState.Starting,
                     "IDLE" => AidyState.Idle,
                     "LISTENING" => AidyState.Listening,
+                    "COMMAND_LISTENING" => AidyState.CommandListening,
                     "PROCESSING" => AidyState.Processing,
                     "SPEAKING" => AidyState.Speaking,
                     "CONFIRM" => AidyState.Confirming,
@@ -188,6 +190,21 @@ namespace WpfApp1.Services
                 if (!string.IsNullOrWhiteSpace(t))
                     CommandHeard?.Invoke(t);
 
+                return;
+            }
+
+            if (line.StartsWith("TIMER:", StringComparison.OrdinalIgnoreCase))
+            {
+                // Format: TIMER:{event}:{remaining_seconds}:{total_seconds}
+                var payload = line.Substring("TIMER:".Length).Trim();
+                var parts = payload.Split(':', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 3)
+                {
+                    var eventName = parts[0].Trim().ToLowerInvariant();
+                    _ = int.TryParse(parts[1], out var remaining);
+                    _ = int.TryParse(parts[2], out var total);
+                    TimerChanged?.Invoke(eventName, remaining, total);
+                }
                 return;
             }
 

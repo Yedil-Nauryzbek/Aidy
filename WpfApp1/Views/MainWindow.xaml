@@ -253,58 +253,14 @@
     </Window.Resources>
 
     <Grid x:Name="Root">
-        <!-- ===== космос ===== -->
-        <Rectangle>
-            <Rectangle.Fill>
-                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
-                    <GradientStop Color="#0B1022" Offset="0"/>
-                    <GradientStop Color="#060710" Offset="1"/>
-                </LinearGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
-
-        <!-- Stars -->
-        <Canvas IsHitTestVisible="False" Opacity="0.95">
-            <!-- white -->
-            <Ellipse Width="2" Height="2" Fill="#35FFFFFF" Canvas.Left="120" Canvas.Top="120"/>
-            <Ellipse Width="1" Height="1" Fill="#25FFFFFF" Canvas.Left="300" Canvas.Top="90"/>
-            <Ellipse Width="2" Height="2" Fill="#20FFFFFF" Canvas.Left="610" Canvas.Top="160"/>
-            <Ellipse Width="1" Height="1" Fill="#30FFFFFF" Canvas.Left="980" Canvas.Top="110"/>
-            <Ellipse Width="2" Height="2" Fill="#18FFFFFF" Canvas.Left="1300" Canvas.Top="190"/>
-            <Ellipse Width="1" Height="1" Fill="#22FFFFFF" Canvas.Left="1460" Canvas.Top="310"/>
-            <Ellipse Width="2" Height="2" Fill="#28FFFFFF" Canvas.Left="220" Canvas.Top="520"/>
-            <Ellipse Width="1" Height="1" Fill="#2AFFFFFF" Canvas.Left="760" Canvas.Top="640"/>
-            <Ellipse Width="2" Height="2" Fill="#24FFFFFF" Canvas.Left="1040" Canvas.Top="720"/>
-            <!-- cyan/violet -->
-            <Ellipse Width="2" Height="2" Fill="#2A7CD9FF" Canvas.Left="420" Canvas.Top="260"/>
-            <Ellipse Width="1" Height="1" Fill="#207CD9FF" Canvas.Left="860" Canvas.Top="260"/>
-            <Ellipse Width="2" Height="2" Fill="#1F7CD9FF" Canvas.Left="1180" Canvas.Top="520"/>
-            <Ellipse Width="2" Height="2" Fill="#25B46CFF" Canvas.Left="540" Canvas.Top="420"/>
-            <Ellipse Width="1" Height="1" Fill="#20B46CFF" Canvas.Left="1260" Canvas.Top="360"/>
-        </Canvas>
-
-        <!-- Nebula -->
-        <Canvas IsHitTestVisible="False">
-            <Ellipse Width="920" Height="560" Canvas.Left="520" Canvas.Top="110" Opacity="0.16" Fill="#3A2D7A">
-                <Ellipse.Effect>
-                    <BlurEffect Radius="110"/>
-                </Ellipse.Effect>
-            </Ellipse>
-            <Ellipse Width="820" Height="560" Canvas.Left="700" Canvas.Top="240" Opacity="0.12" Fill="#2148A8">
-                <Ellipse.Effect>
-                    <BlurEffect Radius="120"/>
-                </Ellipse.Effect>
-            </Ellipse>
-        </Canvas>
-
-        <!-- subtle grain -->
-        <Rectangle IsHitTestVisible="False" Fill="{StaticResource NoiseBrush}" Opacity="0.35"/>
+        <!-- Outer area is transparent and non-interactive -->
+        <Rectangle Fill="Transparent" IsHitTestVisible="False"/>
 
         <!-- ===== App Window (center) ===== -->
         <Viewbox Stretch="Uniform" StretchDirection="Both">
             <Grid Width="1536" Height="864">
 
-                <Border Width="1413" Height="743"
+                <Border x:Name="MainShell" Width="1413" Height="743"
                         CornerRadius="28"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
@@ -313,14 +269,14 @@
                         BorderThickness="1"
                         Effect="{StaticResource WindowShadow}">
 
-                    <Grid>
+                    <Grid x:Name="ShellRoot">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="290"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition x:Name="SidebarColumn" Width="290"/>
+                            <ColumnDefinition x:Name="MainColumn" Width="*"/>
                         </Grid.ColumnDefinitions>
 
                         <!-- ===== Sidebar ===== -->
-                        <Border Grid.Column="0"
+                        <Border x:Name="SidebarPanel" Grid.Column="0"
                                 CornerRadius="28,0,0,28"
                                 Background="{StaticResource SidebarFill}">
                             <Grid>
@@ -506,14 +462,14 @@
                         </Border>
 
                         <!-- ===== Main ===== -->
-                        <Grid Grid.Column="1">
+                        <Grid x:Name="MainArea" Grid.Column="1">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="64"/>
+                                <RowDefinition x:Name="TitleBarRow" Height="64"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
                             <!-- Title bar -->
-                            <Grid Grid.Row="0"
+                            <Grid x:Name="TitleBarHost" Grid.Row="0"
                                   Background="Transparent"
                                   MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
 
@@ -526,16 +482,29 @@
                                     </Rectangle.Fill>
                                 </Rectangle>
 
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,24,0">
-                                    <Button Style="{StaticResource ChromeButton}" Click="Minimize_Click">
+                                <StackPanel x:Name="ChromePanel" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,24,0">
+                                    <Button x:Name="CompactToggleButton" Style="{StaticResource ChromeButton}" Click="CompactToggle_Click">
+                                        <Grid Width="18" Height="18">
+                                            <Grid x:Name="CompactIconInward" Visibility="Visible">
+                                                <Path Stroke="White" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M2,16 L7,11 M7,11 L7,14 M7,11 L4,11"/>
+                                                <Path Stroke="White" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M16,2 L11,7 M11,7 L11,4 M11,7 L14,7"/>
+                                            </Grid>
+                                            <Grid x:Name="CompactIconOutward" Visibility="Collapsed">
+                                                <Path Stroke="White" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M7,11 L2,16 M2,16 L5,16 M2,16 L2,13"/>
+                                                <Path Stroke="White" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M11,7 L16,2 M16,2 L13,2 M16,2 L16,5"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Button>
+                                    <Border x:Name="CompactToWindowsSpacer" Width="14"/>
+                                    <Button x:Name="MinimizeButton" Style="{StaticResource ChromeButton}" Click="Minimize_Click">
                                         <TextBlock Text="—" FontSize="18" FontWeight="SemiBold" Opacity="0.7" Foreground="White"/>
                                     </Button>
-                                    <Border Width="14"/>
-                                    <Button Style="{StaticResource ChromeButton}" Click="Maximize_Click">
+                                    <Border x:Name="MinimizeToMaximizeSpacer" Width="14"/>
+                                    <Button x:Name="MaximizeButton" Style="{StaticResource ChromeButton}" Click="Maximize_Click">
                                         <TextBlock Text="□" FontSize="14" FontWeight="SemiBold" Opacity="0.7" Foreground="White"/>
                                     </Button>
-                                    <Border Width="14"/>
-                                    <Button Style="{StaticResource ChromeButton}" Click="Close_Click">
+                                    <Border x:Name="MaximizeToCloseSpacer" Width="14"/>
+                                    <Button x:Name="CloseButton" Style="{StaticResource ChromeButton}" Click="Close_Click">
                                         <TextBlock Text="×" FontSize="20" FontWeight="SemiBold" Opacity="0.7" Foreground="White"/>
                                     </Button>
                                 </StackPanel>
@@ -547,7 +516,7 @@
                                 <Grid x:Name="AidyPage" Visibility="Visible">
 
                                     <!-- header (BOUND) -->
-                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,42,0,0">
+                                    <StackPanel x:Name="AidyHeader" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,42,0,0">
                                         <TextBlock Text="{Binding StatusText}"
                        Style="{StaticResource H1}"
                        HorizontalAlignment="Center"/>
@@ -584,11 +553,30 @@
 
                                     </StackPanel>
 
+                                    <StackPanel x:Name="CompactStateHost"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Top"
+                                                Margin="0,20,0,0"
+                                                Visibility="Collapsed">
+                                        <TextBlock Text="{Binding StatusText}"
+                                                   FontFamily="Segoe UI"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="22"
+                                                   Margin="0,0,0,0"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{StaticResource TextPrimary}"/>
+                                    </StackPanel>
+
 
                                     <!-- ===== Listening Orb ===== -->
-                                    <Grid HorizontalAlignment="Center"
+                                    <Grid x:Name="OrbHost"
+              RenderTransformOrigin="0.5,0.5"
+              HorizontalAlignment="Center"
               VerticalAlignment="Top"
               Margin="0,140,0,0">
+                                        <Grid.RenderTransform>
+                                            <ScaleTransform x:Name="OrbScale" ScaleX="1" ScaleY="1"/>
+                                        </Grid.RenderTransform>
                                         <Grid Width="520" Height="520">
 
                                             <!-- outer glow pulse -->
@@ -786,6 +774,7 @@
                                         </Grid>
 
                                         </Grid>
+
                                     </Grid>
 
                                 

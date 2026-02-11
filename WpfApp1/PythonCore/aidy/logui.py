@@ -12,6 +12,13 @@ def ui_command(text: str):
     if UI_MODE:
         print(f"COMMAND:{text}", flush=True)
 
+def ui_timer(event: str, remaining_seconds: int, total_seconds: int):
+    if UI_MODE:
+        print(
+            f"TIMER:{event}:{int(max(0, remaining_seconds))}:{int(max(0, total_seconds))}",
+            flush=True,
+        )
+
 
 
 LOG_LEVEL = os.environ.get("AIDY_LOG", "INFO").upper()

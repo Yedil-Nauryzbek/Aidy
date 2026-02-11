@@ -1,4 +1,5 @@
 // WpfApp1/ViewModels/MainViewModel.cs
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using WpfApp1.Models;
@@ -9,6 +10,7 @@ namespace WpfApp1.ViewModels
     {
         private string _statusText = "STARTING...";
         private string _logText = "";
+        private string _wakeDebugLog = "";
         private string _lastCommand = "";
         private AidyState _currentState = AidyState.Starting;
 
@@ -22,6 +24,12 @@ namespace WpfApp1.ViewModels
         {
             get => _logText;
             set { _logText = value; OnPropertyChanged(); }
+        }
+
+        public string WakeDebugLog
+        {
+            get => _wakeDebugLog;
+            set { _wakeDebugLog = value; OnPropertyChanged(); }
         }
 
         public string LastCommand
@@ -44,6 +52,7 @@ namespace WpfApp1.ViewModels
                     AidyState.Starting => "STARTING...",
                     AidyState.Idle => "IDLE",
                     AidyState.Listening => "LISTENING...",
+                    AidyState.CommandListening => "LISTENING FOR COMMAND...",
                     AidyState.Processing => "PROCESSING...",
                     AidyState.Speaking => "SPEAKING...",
                     AidyState.Confirming => "YES OR NO",
@@ -56,6 +65,48 @@ namespace WpfApp1.ViewModels
                     _ => "IDLE"
                 };
             }
+        }
+
+        public void AppendLogLine(string line, int maxLines = 1200)
+        {
+            LogText = AppendBounded(LogText, line, maxLines);
+        }
+
+        public void AppendWakeDebugLine(string line, int maxLines = 320)
+        {
+            WakeDebugLog = AppendBounded(WakeDebugLog, line, maxLines);
+        }
+
+        public void ClearWakeDebugLog()
+        {
+            WakeDebugLog = "";
+        }
+
+        private static string AppendBounded(string existing, string line, int maxLines)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return existing;
+            }
+
+            var normalized = line.Replace("\r", "").TrimEnd();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return existing;
+            }
+
+            var combined = string.IsNullOrEmpty(existing)
+                ? normalized
+                : existing + "\n" + normalized;
+
+            var lines = combined.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length <= maxLines)
+            {
+                return string.Join('\n', lines);
+            }
+
+            var tail = lines[^maxLines..];
+            return string.Join('\n', tail);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

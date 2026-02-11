@@ -1,9 +1,6 @@
 ﻿import os
-import sys
 import json
 import time
-import zipfile
-import urllib.request
 import csv
 import audioop
 import ctypes
@@ -40,12 +37,19 @@ class MockRecognizer:
 from .config import (
     API_URL,
     WAKE_KEYWORDS,
+    WAKE_FUZZY_ALIASES,
     is_wake_phrase,
     SAMPLE_RATE,
     CHUNK_SAMPLES,
-    FRAME_MS,
+    WAKE_CHUNK_SAMPLES,
+    WAKE_DETECT_PARTIAL,
+    WAKE_REPLY_DEAFEN_MS,
     VAD_START_THRESHOLD,
     VAD_SILENCE_MS,
+    VAD_MIN_SPEECH_MS,
+    TIMER_START_PHRASES,
+    TIMER_CANCEL_PHRASES,
+    TIMER_MAX_SECONDS,
     CONFIRM_GRAMMAR_PHRASES,
     CONFIRM_YES,
     CONFIRM_NO,
@@ -70,7 +74,7 @@ from .config import (
     FOLLOW_MODE_TTL_SECONDS,
     FOLLOW_MODE_REPEAT_LAST_STEPS,
 )
-from .logui import ui_state, ui_command, debug, info, warn, error, UI_MODE, LOG_LEVEL
+from .logui import ui_state, ui_command, ui_timer, debug, info, warn, error, UI_MODE, LOG_LEVEL
 from .voice import Voice
 from .apps import (
     load_apps_config,
@@ -96,13 +100,15 @@ from .system import (
 from .intent_api import start_local_intent_api, IntentAPI
 from .context import ContextManager, should_merge_context
 from .scheduler import TaskScheduler, Task
-from .delay import parse_delay_request
+from .delay import parse_delay_request, parse_timer_duration_seconds
 from .action_history import ActionHistory, ActionRecord
 from .followup import (
     FollowUpManager,
     PendingAction,
     PENDING_NEED_STEPS,
     PENDING_NEED_CHOICE,
+    PENDING_NEED_TARGET,
+    PENDING_NEED_TIMER_DURATION,
 )
 from .decision_core import (
     STEP_REQUIRED,
@@ -168,8 +174,11 @@ def load_command_phrases(base_dir: str):
 
 
 class Aidy:
-    DEAFEN_MS_AFTER_TTS = 650
-    FLUSH_MS = 250
+    DEAFEN_MS_AFTER_TTS = 120
+    FLUSH_MS = 20
+    WAKE_ACK_GUARD_MS = 12
+    WAKE_GREETING_COOLDOWN_S = 0.12
+    WAKE_GREETING_MIN_RMS = 1
     _SHORT_PATH_ENABLED = True
 
     def _short_path(self, path: str) -> str:
@@ -189,6 +198,123 @@ class Aidy:
             pass
         return path
 
+    def _resolve_existing_dir(self, candidates: list[str]) -> str | None:
+        for path in candidates:
+            if path and os.path.isdir(path):
+                return os.path.abspath(path)
+        return None
+
+    def _resolve_model_path(self) -> str | None:
+        model_dir = "vosk-model-small-en-us-0.15"
+        here = os.path.abspath(os.path.dirname(__file__))
+        candidates = [
+            os.path.join(self.base_dir, model_dir),
+            os.path.join(self.base_dir, "PythonCore", model_dir),
+            os.path.join(os.path.dirname(self.base_dir), model_dir),
+            os.path.join(os.path.dirname(self.base_dir), "PythonCore", model_dir),
+            os.path.join(here, model_dir),
+            os.path.join(os.path.dirname(here), model_dir),
+            os.path.join(os.path.dirname(os.path.dirname(here)), model_dir),
+        ]
+
+        resolved = self._resolve_existing_dir(candidates)
+        if not resolved:
+            return None
+
+        model_file = os.path.join(resolved, "am", "final.mdl")
+        if os.path.exists(model_file):
+            return resolved
+        return None
+
+    def _wake_log(self, msg: str):
+        info(f"[WAKE] {msg}")
+
+    def _cmd_log(self, msg: str):
+        info(f"[CMD] {msg}")
+
+    def _play_wake_ack(self):
+        if bool(getattr(self.voice, "muted", False)):
+            # Respect explicit mute command: keep assistant silent until unmute.
+            self._wake_log("ack skipped: voice muted")
+            ui_state("IDLE")
+            return
+        ui_state("SPEAKING")
+        ack_t0 = time.perf_counter()
+        self._wake_log("ack playback")
+        played = False
+        try:
+            # Fast wake response with full clip to avoid truncated speech.
+            played = bool(self.voice.play_key("wake_fast"))
+            if played:
+                self._wake_log("ack source=clip key='wake_fast'")
+        except Exception as e:
+            self._wake_log(f"ack primary failed: {e}")
+            played = False
+        if not played:
+            try:
+                self._wake_log("ack fallback source=clip key='wake'")
+                played = bool(self.voice.play_key("wake"))
+                if played:
+                    self._wake_log("ack source=clip key='wake'")
+            except Exception as e:
+                self._wake_log(f"ack fallback failed: {e}")
+                played = False
+        if not played:
+            try:
+                self._wake_log("ack final fallback source=tts")
+                played = bool(self.voice.tts_blocking("Yes."))
+                if played:
+                    self._wake_log("ack source=tts text='Yes.'")
+            except Exception as e:
+                self._wake_log(f"ack final fallback failed: {e}")
+                played = False
+        if played:
+            self._deafen_after_speak(int(self.WAKE_ACK_GUARD_MS))
+            self._wake_log(f"ack elapsed_ms={int((time.perf_counter() - ack_t0) * 1000)}")
+        else:
+            self._wake_log("ack silent: no clip and TTS failed")
+        ui_state("IDLE")
+
+    def _normalize_wake_text(self, text: str) -> str:
+        t = (text or "").lower().strip()
+        if not t:
+            return ""
+        t = t.replace("'", "")
+        cleaned = "".join(ch if (ch.isalnum() or ch.isspace()) else " " for ch in t)
+        return " ".join(cleaned.split())
+
+    def _is_greeting_only(self, text: str) -> bool:
+        return text in {"hey", "hello", "ok", "okay", "hi", "хей", "хэй"}
+
+    def _match_wake_prefix(self, text: str, prefixes: list[str]) -> tuple[bool, str]:
+        for p in prefixes:
+            if not p:
+                continue
+            if text == p:
+                return True, ""
+            px = p + " "
+            if text.startswith(px):
+                return True, text[len(px):].strip()
+        return False, ""
+
+    def _detect_wake_with_tail(self, normalized_text: str, greeting_latched: bool) -> tuple[bool, str, str]:
+        if not normalized_text:
+            return False, "", ""
+
+        if is_wake_phrase(normalized_text):
+            matched, tail = self._match_wake_prefix(normalized_text, self._wake_prefixes)
+            if matched:
+                return True, tail, "keyword"
+            return True, "", "keyword"
+
+        if greeting_latched:
+            matched, tail = self._match_wake_prefix(normalized_text, self._wake_alias_prefixes)
+            # Fuzzy aliases are noisy; require an actual tail command.
+            if matched and tail:
+                return True, tail, "fuzzy"
+
+        return False, "", ""
+
     def _flush_audio(self, ms: int):
         if not self.stream:
             return
@@ -203,15 +329,134 @@ class Aidy:
             return
         if ms is None:
             ms = self.DEAFEN_MS_AFTER_TTS
+        # Non-blocking deafen window:
+        # keep UI state transitions responsive while still ignoring mic input
+        # right after TTS playback to avoid self-recognition.
+        hold_ms = max(0, int(ms)) + int(self.FLUSH_MS)
+        now = time.time()
+        self._deafen_until = max(self._deafen_until, now + (hold_ms / 1000.0))
 
-        self._flush_audio(self.FLUSH_MS)
+    def _is_deafened(self) -> bool:
+        if getattr(self.voice, "muted", False):
+            return False
+        return time.time() < self._deafen_until
 
-        end = time.time() + (ms / 1000.0)
-        while time.time() < end:
-            self.stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+    def _sync_state_before_listen(self, listen_state: str):
+        # Reflect target state immediately; keep guard internal.
+        ui_state(listen_state)
+        if self._is_deafened():
+            while self._is_deafened():
+                time.sleep(0.005)
 
     def _sleep_success(self):
-        time.sleep(0.8 if self.voice.muted else 0.35)
+        if not self.voice.muted:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("success", "Task finished.")
+            self._deafen_after_speak()
+            ui_state("SUCCESS")
+        time.sleep(0.8 if self.voice.muted else 0.18)
+
+    def _apply_volume_steps(self, up: bool, steps: int) -> bool:
+        safe_steps = max(1, min(10, int(steps)))
+        try:
+            volume_steps(up=up, steps=safe_steps)
+            return True
+        except Exception as e:
+            error(f"Volume change failed: {e}")
+            return False
+
+    def _format_timer_speech(self, seconds: int) -> str:
+        seconds = max(1, int(seconds))
+        mins, secs = divmod(seconds, 60)
+        if mins > 0 and secs > 0:
+            return f"{mins} minutes {secs} seconds"
+        if mins > 0:
+            return f"{mins} minutes"
+        return f"{secs} seconds"
+
+    def _emit_timer_ui(self, event: str, remaining_seconds: int, total_seconds: int):
+        ui_timer(event, int(max(0, remaining_seconds)), int(max(0, total_seconds)))
+
+    def _start_timer(self, seconds: int, source_text: str | None = None) -> bool:
+        seconds = int(seconds)
+        if seconds <= 0 or seconds > TIMER_MAX_SECONDS:
+            ui_state("WARNING")
+            self.voice.play_or_tts("not_sure", "I couldn't set that timer")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
+        replacing = self.timer_active
+        if replacing:
+            self._emit_timer_ui("stop", 0, self.timer_total_seconds)
+
+        self.timer_active = True
+        self.timer_total_seconds = seconds
+        self.timer_end_at = time.time() + float(seconds)
+        self.timer_last_second_sent = -1
+        self._emit_timer_ui("start", seconds, seconds)
+
+        ui_state("SPEAKING")
+        if replacing:
+            msg = f"Timer reset to {self._format_timer_speech(seconds)}."
+        else:
+            msg = f"Timer set for {self._format_timer_speech(seconds)}."
+        self.voice.play_or_tts("timer_set", msg)
+        self._deafen_after_speak()
+        ui_state("IDLE")
+
+        if source_text:
+            self._set_last_command(source_text)
+        self._set_memory("timer", {"seconds": seconds})
+        self._set_context("timer", {"seconds": seconds})
+        return True
+
+    def _cancel_timer(self, announce: bool = True) -> bool:
+        if not self.timer_active:
+            if announce:
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("not_now", "No active timer.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+            return False
+
+        total = self.timer_total_seconds
+        self.timer_active = False
+        self.timer_total_seconds = 0
+        self.timer_end_at = 0.0
+        self.timer_last_second_sent = -1
+        self._emit_timer_ui("stop", 0, total)
+
+        if announce:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("cancelled", "Timer cancelled.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+        return True
+
+    def _update_timer(self):
+        if not self.timer_active:
+            return
+
+        remaining = int(max(0, self.timer_end_at - time.time() + 0.999))
+        if remaining != self.timer_last_second_sent:
+            self.timer_last_second_sent = remaining
+            self._emit_timer_ui("tick", remaining, self.timer_total_seconds)
+
+        if remaining > 0:
+            return
+
+        total = self.timer_total_seconds
+        self.timer_active = False
+        self.timer_total_seconds = 0
+        self.timer_end_at = 0.0
+        self.timer_last_second_sent = -1
+        self._emit_timer_ui("done", 0, total)
+
+        ui_state("SPEAKING")
+        self.voice.play_or_tts("timer_done", "Timer is done.")
+        self._deafen_after_speak()
+        ui_state("IDLE")
 
     def __init__(self, base_dir: str | None = None):
         if base_dir:
@@ -219,24 +464,15 @@ class Aidy:
         else:
             self.base_dir = os.path.dirname(os.path.abspath(__file__))
 
-        self.model_path = os.path.join(self.base_dir, "vosk-model-small-en-us-0.15")
-        self.model_url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-
-        model_file = os.path.join(self.model_path, "am", "final.mdl")
-        if not os.path.exists(model_file):
-            info("Vosk model missing -> downloading...")
-            zip_path = os.path.join(self.base_dir, "vosk_model.zip")
-            try:
-                urllib.request.urlretrieve(self.model_url, zip_path)
-                with zipfile.ZipFile(zip_path, "r") as z:
-                    z.extractall(self.base_dir)
-                # os.remove(zip_path)
-                info("Vosk model downloaded")
-            except Exception as e:
-                warn(f"Failed to download Vosk model: {e}")
+        self.model_path = self._resolve_model_path()
 
         try:
+            if not self.model_path:
+                raise FileNotFoundError(
+                    "Local Vosk model not found. Expected folder: vosk-model-small-en-us-0.15"
+                )
             model_path = self._short_path(self.model_path)
+            info(f"Vosk model path: {self.model_path}")
             self.model = vosk.Model(model_path)
         except Exception as e:
             warn(f"Failed to load Vosk model: {e}")
@@ -257,6 +493,22 @@ class Aidy:
             | set(NUMERIC_FOLLOWUP_GRAMMAR_PHRASES)
             | set(MORE_ACTION_PHRASES)
             | set(LESS_ACTION_PHRASES)
+            | set(TIMER_START_PHRASES)
+            | set(TIMER_CANCEL_PHRASES)
+        )
+        self._wake_prefixes = sorted(
+            {self._normalize_wake_text(w) for w in WAKE_KEYWORDS if self._normalize_wake_text(w)},
+            key=len,
+            reverse=True,
+        )
+        self._wake_alias_prefixes = sorted(
+            {
+                self._normalize_wake_text(w)
+                for w in WAKE_FUZZY_ALIASES
+                if self._normalize_wake_text(w)
+            },
+            key=len,
+            reverse=True,
         )
 
         self.apps = load_apps_config(self.base_dir)
@@ -265,9 +517,9 @@ class Aidy:
         self.stream = None
 
         self.voice = Voice(self.base_dir)
-        ok = start_local_intent_api(self.base_dir)
-        if not ok:
-            warn("Local Intent API not started. Will try anyway.")
+        self.intent_api_ready = start_local_intent_api(self.base_dir)
+        if not self.intent_api_ready:
+            warn("Local Intent API not started. Offline keyword mode only.")
         self.api = IntentAPI(API_URL)
 
         self.wake_recognizer = self._new_wake_recognizer() if self.model is not None else None
@@ -288,6 +540,11 @@ class Aidy:
         self.last_step_actions = LastStepActionManager(ttl_seconds=12.0)
         self.repeat_last_steps = FOLLOW_MODE_REPEAT_LAST_STEPS or REPEAT_LAST_STEPS
         self.follow_mode = FollowModeManager(ttl_seconds=float(FOLLOW_MODE_TTL_SECONDS), enabled=bool(FOLLOW_MODE_ENABLED))
+        self.timer_active = False
+        self.timer_total_seconds = 0
+        self.timer_end_at = 0.0
+        self.timer_last_second_sent = -1
+        self._deafen_until = 0.0
 
     def start_stream(self):
         if self.stream is not None:
@@ -302,8 +559,12 @@ class Aidy:
             )
             self.stream.start_stream()
             debug("Audio stream started")
+            self._wake_log(
+                f"audio stream started rate={SAMPLE_RATE} chunk={CHUNK_SAMPLES}"
+            )
         except Exception as e:
             warn(f"Failed to start audio stream: {e}. Using mock mode.")
+            self._wake_log(f"audio stream failed: {e}")
             self.stream = None  # Indicate mock mode
 
     def stop_stream(self):
@@ -316,15 +577,20 @@ class Aidy:
     def _new_wake_recognizer(self):
         if self.model is None or self.stream is None:
             return MockRecognizer(is_wake=True)
+        # Free-form recognizer is more robust for wake word across noisy mics/debug runs.
         rec = vosk.KaldiRecognizer(self.model, SAMPLE_RATE)
         rec.SetWords(False)
         return rec
 
-    def _new_command_recognizer(self):
+    def _new_command_recognizer(self, use_grammar: bool = True, grammar_phrases: list[str] | None = None):
         if self.model is None or self.stream is None:
             return MockRecognizer(is_wake=False)
-        grammar = json.dumps(self.command_phrases)
-        rec = vosk.KaldiRecognizer(self.model, SAMPLE_RATE, grammar)
+        if use_grammar:
+            phrases = grammar_phrases if grammar_phrases else self.command_phrases
+            grammar = json.dumps(sorted(set(phrases)))
+            rec = vosk.KaldiRecognizer(self.model, SAMPLE_RATE, grammar)
+        else:
+            rec = vosk.KaldiRecognizer(self.model, SAMPLE_RATE)
         rec.SetWords(True)
         return rec
 
@@ -394,52 +660,211 @@ class Aidy:
         ui_state("IDLE")
 
     def wait_for_wake(self):
-        ui_state("LISTENING")
+        self._sync_state_before_listen("LISTENING")
         info("Wake: listening...")
 
         self.wake_recognizer = self._new_wake_recognizer()
+        wake_chunk = max(160, int(WAKE_CHUNK_SAMPLES))
+        self._wake_log(
+            f"listen start chunk={wake_chunk} stream={'on' if self.stream else 'off'} "
+            f"partial={'on' if WAKE_DETECT_PARTIAL else 'off'} vad={VAD_START_THRESHOLD}"
+        )
 
         last_logged = ""
         last_log_t = 0.0
+        last_status_t = 0.0
+        last_partial = ""
+        last_partial_t = 0.0
+        greeting_latch_until = 0.0
+        greeting_latch_energy = 0
+        last_greeting_log_t = 0.0
+        last_greeting_trigger_t = 0.0
+        greeting_min_rms = int(self.WAKE_GREETING_MIN_RMS)
+        greeting_partial_hits = 0
+        last_greeting_partial = ""
 
         while True:
             if self.stream:
-                data = self.stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+                data = self.stream.read(wake_chunk, exception_on_overflow=False)
             else:
-                data = b'\x00' * (CHUNK_SAMPLES * 2)  # Mock silence data
+                data = b'\x00' * (wake_chunk * 2)  # Mock silence data
 
             self._handle_due_tasks()
+            if self._is_deafened():
+                continue
+
+            rms = audioop.rms(data, 2)
+            now = time.time()
+            if (now - last_status_t) >= 2.0:
+                self._wake_log(f"waiting rms={rms}")
+                last_status_t = now
 
             if self.wake_recognizer.AcceptWaveform(data):
                 r = json.loads(self.wake_recognizer.Result())
                 text = (r.get("text", "") or "").lower().strip()
                 text = " ".join(text.split())
                 if not text:
+                    self._wake_log("final text empty")
                     continue
 
-                now = time.time()
                 if text != last_logged or (now - last_log_t) > 1.0:
                     info(f'Wake Heard: "{text}"')
                     last_logged = text
                     last_log_t = now
 
-                if is_wake_phrase(text):
+                norm_text = self._normalize_wake_text(text)
+                if self._is_greeting_only(norm_text):
+                    greeting_partial_hits = 0
+                    last_greeting_partial = ""
+                    had_greeting_latch = now <= greeting_latch_until
+                    greeting_latch_until = now + 2.4
+                    greeting_latch_energy = max(greeting_latch_energy, int(rms))
+                    if (now - last_greeting_log_t) >= 0.8:
+                        self._wake_log(f"greeting latch final='{norm_text}'")
+                        last_greeting_log_t = now
+                    # Final greeting recognition is already a strong signal; do not require
+                    # non-zero RMS here, because some devices report 0 on quiet speech.
+                    if (now - last_greeting_trigger_t) >= float(self.WAKE_GREETING_COOLDOWN_S):
+                        latch_info = "yes" if had_greeting_latch else "no"
+                        self._wake_log(
+                            f"detected greeting-only final='{norm_text}' rms={rms} latched={latch_info}"
+                        )
+                        last_greeting_trigger_t = now
+                        self._play_wake_ack()
+                        return None
+                    continue
+
+                detected, tail, reason = self._detect_wake_with_tail(
+                    norm_text,
+                    greeting_latched=(now <= greeting_latch_until),
+                )
+                if detected:
                     info(f'Wake detected: "{text}"')
-                    ui_state("SPEAKING")
-                    self.voice.play_or_tts("wake", "I am here, sir")
-                    self._deafen_after_speak()
-                    ui_state("IDLE")
-                    return
+                    self._wake_log(
+                        f"detected {reason} final='{norm_text}' tail='{tail}' rms={rms}"
+                    )
+                    self._play_wake_ack()
+                    return tail or None
 
-    def listen_command_vosk(self, max_seconds=6, min_listen_ms=2000, ui_state_label="LISTENING"):
-        ui_state(ui_state_label)
-        info("Command: listening...")
+                cmd_text = self._normalize_spoken_command(norm_text)
+                if self._is_command_like_text(cmd_text):
+                    if now <= greeting_latch_until:
+                        self._wake_log(f"implicit command final='{cmd_text}' from='{norm_text}'")
+                        self._play_wake_ack()
+                        return cmd_text
+                    self._wake_log(f"implicit ignored (no wake context) final='{cmd_text}'")
+            elif WAKE_DETECT_PARTIAL:
+                try:
+                    pr = json.loads(self.wake_recognizer.PartialResult())
+                    partial = (pr.get("partial", "") or "").lower().strip()
+                    partial = " ".join(partial.split())
+                except Exception:
+                    partial = ""
 
-        rec = self._new_command_recognizer()
+                if partial and (partial != last_partial or (now - last_partial_t) > 1.0):
+                    self._wake_log(f"partial='{partial}' rms={rms}")
+                    last_partial = partial
+                    last_partial_t = now
+
+                if not partial:
+                    if now > greeting_latch_until:
+                        greeting_latch_energy = 0
+                    continue
+
+                norm_partial = self._normalize_wake_text(partial)
+                if self._is_greeting_only(norm_partial):
+                    if norm_partial == last_greeting_partial:
+                        greeting_partial_hits += 1
+                    else:
+                        greeting_partial_hits = 1
+                    last_greeting_partial = norm_partial
+                    greeting_latch_until = now + 2.4
+                    greeting_latch_energy = max(greeting_latch_energy, int(rms))
+                    if (now - last_greeting_log_t) >= 0.8:
+                        self._wake_log(f"greeting latch partial='{norm_partial}'")
+                        last_greeting_log_t = now
+                    # Fast path: acknowledge "hey" directly from partial result when energy
+                    # indicates real speech. Final-result path remains as fallback.
+                    # Make wake response feel instant: for short greeting wake words
+                    # trigger on first valid partial instead of waiting for second hit.
+                    if norm_partial in {"hey", "hi", "хей", "хэй"}:
+                        fast_ready = True
+                    else:
+                        fast_ready = (rms >= greeting_min_rms) or (greeting_partial_hits >= 2)
+                    if fast_ready and (now - last_greeting_trigger_t) >= float(self.WAKE_GREETING_COOLDOWN_S):
+                        self._wake_log(
+                            f"detected greeting-only partial='{norm_partial}' rms={rms} hits={greeting_partial_hits}"
+                        )
+                        last_greeting_trigger_t = now
+                        self._play_wake_ack()
+                        return None
+                    continue
+                greeting_partial_hits = 0
+                last_greeting_partial = ""
+                if now > greeting_latch_until:
+                    greeting_latch_energy = 0
+
+                detected, tail, reason = self._detect_wake_with_tail(
+                    norm_partial,
+                    greeting_latched=(now <= greeting_latch_until),
+                )
+                if detected:
+                    if rms <= 0:
+                        self._wake_log(
+                            f"ignore detected partial='{norm_partial}' reason={reason} tail='{tail}' rms={rms}"
+                        )
+                        continue
+                    if reason == "fuzzy":
+                        self._wake_log(
+                            f"ignore fuzzy partial='{norm_partial}' tail='{tail}' rms={rms}"
+                        )
+                        continue
+                    info(f'Wake detected (partial): "{partial}"')
+                    self._wake_log(
+                        f"detected {reason} partial='{norm_partial}' tail='{tail}' rms={rms}"
+                    )
+                    self._play_wake_ack()
+                    return tail or None
+
+    def listen_command_vosk(
+        self,
+        max_seconds=6,
+        min_listen_ms=2000,
+        ui_state_label="LISTENING",
+        use_grammar=True,
+        speak_on_empty=True,
+        grammar_phrases: list[str] | None = None,
+    ):
+        self._sync_state_before_listen(ui_state_label)
+        info(f"Command: listening... grammar={'on' if use_grammar else 'off'}")
+        if ui_state_label == "CONFIRM":
+            silence_stop_ms = min(VAD_SILENCE_MS, 380)
+        elif ui_state_label == "COMMAND_LISTENING":
+            silence_stop_ms = min(VAD_SILENCE_MS, 320)
+        elif ui_state_label == "FOLLOWUP":
+            silence_stop_ms = min(VAD_SILENCE_MS, 420)
+        else:
+            silence_stop_ms = min(VAD_SILENCE_MS, 460)
+        self._cmd_log(
+            f"start state={ui_state_label} grammar={'on' if use_grammar else 'off'} "
+            f"max_s={max_seconds} min_listen_ms={min_listen_ms} vad={VAD_START_THRESHOLD} "
+            f"silence_stop_ms={silence_stop_ms}"
+        )
+
+        rec = self._new_command_recognizer(
+            use_grammar=use_grammar,
+            grammar_phrases=grammar_phrases,
+        )
+        frame_ms = max(1, int(round((CHUNK_SAMPLES / SAMPLE_RATE) * 1000.0)))
 
         started = False
         silence_ms = 0
+        voiced_ms = 0
+        last_rms = 0
         start_time = time.time()
+        if self._deafen_until > start_time:
+            # Do not consume user listen timeout while post-TTS deafen is active.
+            start_time += (self._deafen_until - start_time)
         best_final = ""
 
         while time.time() - start_time < max_seconds:
@@ -447,7 +872,11 @@ class Aidy:
                 data = b'\x00' * (CHUNK_SAMPLES * 2)
             else:
                 data = self.stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+            self._handle_due_tasks()
+            if self._is_deafened():
+                continue
             rms = audioop.rms(data, 2)
+            last_rms = rms
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 
@@ -455,15 +884,17 @@ class Aidy:
                 if rms >= VAD_START_THRESHOLD:
                     started = True
                     silence_ms = 0
+                    voiced_ms = frame_ms
                     debug(f"VAD: start (rms={rms})")
                 else:
                     if elapsed_ms < min_listen_ms:
                         continue
             else:
                 if rms < VAD_START_THRESHOLD:
-                    silence_ms += FRAME_MS
+                    silence_ms += frame_ms
                 else:
                     silence_ms = 0
+                    voiced_ms += frame_ms
 
             if rec.AcceptWaveform(data):
                 r = json.loads(rec.Result())
@@ -471,9 +902,14 @@ class Aidy:
                 if t:
                     best_final = t
 
-            if started and silence_ms >= VAD_SILENCE_MS:
-                debug("VAD: stop (silence)")
-                break
+            if started and silence_ms >= silence_stop_ms:
+                if voiced_ms >= VAD_MIN_SPEECH_MS:
+                    debug("VAD: stop (silence)")
+                    break
+                debug("VAD: false start (noise), continue listening")
+                started = False
+                silence_ms = 0
+                voiced_ms = 0
 
         if not best_final:
             r = json.loads(rec.FinalResult())
@@ -482,13 +918,71 @@ class Aidy:
         if not best_final:
             ui_state("IDLE")
             warn("Command: empty")
-            self.voice.play_or_tts("not_heard", "I didn't catch that")
-            self._deafen_after_speak()
+            self._cmd_log(
+                f"empty started={started} voiced_ms={voiced_ms} silence_ms={silence_ms} "
+                f"elapsed_ms={int((time.time() - start_time) * 1000)} rms={last_rms}"
+            )
+            if speak_on_empty:
+                self.voice.play_or_tts("not_heard", "I didn't catch that")
+                self._deafen_after_speak()
             return None
 
         ui_command(best_final)
         info(f"Heard: \"{best_final}\"")
+        self._cmd_log(
+            f"final='{best_final}' voiced_ms={voiced_ms} silence_ms={silence_ms} rms={last_rms}"
+        )
         return best_final
+
+    def listen_command_smart(
+        self,
+        max_seconds=6,
+        min_listen_ms=2000,
+        ui_state_label="LISTENING",
+    ):
+        text = self.listen_command_vosk(
+            max_seconds=max_seconds,
+            min_listen_ms=min_listen_ms,
+            ui_state_label=ui_state_label,
+            use_grammar=True,
+            speak_on_empty=False,
+        )
+        if text:
+            return text
+
+        self._cmd_log("grammar empty -> retry free-form")
+        return self.listen_command_vosk(
+            max_seconds=max_seconds,
+            min_listen_ms=min_listen_ms,
+            ui_state_label=ui_state_label,
+            use_grammar=False,
+            speak_on_empty=True,
+        )
+
+    def _listen_post_wake_command(self, max_attempts: int = 2) -> str | None:
+        non_action_hits = 0
+        for attempt in range(max(1, int(max_attempts))):
+            cmd_text = self.listen_command_smart(
+                max_seconds=(4 if attempt == 0 else 3),
+                min_listen_ms=(360 if attempt == 0 else 260),
+                ui_state_label="COMMAND_LISTENING",
+            )
+            if not cmd_text:
+                return None
+            norm = self._normalize_wake_text(cmd_text)
+            if norm in {"up", "down"}:
+                expanded = f"volume {norm}"
+                self._cmd_log(f"post-wake expand '{cmd_text}' -> '{expanded}'")
+                return expanded
+            if not self._is_non_action_utterance(cmd_text):
+                return cmd_text
+            non_action_hits += 1
+            self._cmd_log(
+                f"post-wake ignore non-action='{cmd_text}' attempt={attempt + 1}/{max_attempts}"
+            )
+            if non_action_hits >= 2:
+                return "__SKIP_WAKE_COMMAND__"
+        return "__SKIP_WAKE_COMMAND__" if non_action_hits > 0 else None
 
     def _set_last_command(self, text: str):
         if self._is_repeating:
@@ -584,6 +1078,16 @@ class Aidy:
             self._deafen_after_speak()
             ui_state("IDLE")
 
+    def _arm_rephrase_followup(self):
+        # One-shot slot: listen for a rephrased command without requiring wake word.
+        self.follow_up.set_pending(
+            PendingAction(
+                pending_type=PENDING_NEED_TARGET,
+                base_intent="rephrase_command",
+                entities={},
+            )
+        )
+
     def _execute_step_intent(self, step_intent: str, steps: int, original_text: str, extra_entities: dict | None = None) -> bool:
         cfg = STEP_REQUIRED.get(step_intent)
         if not cfg:
@@ -605,6 +1109,10 @@ class Aidy:
         self._set_context(action_intent, action_entities)
         self._record_action(action_intent, action_entities)
         return True
+
+    def _speak_steps_prompt(self, base_intent: str):
+        # Use a single explicit prompt so ASR catches "by how much" consistently.
+        self.voice.play_or_tts("by_how_much", "By how much?")
 
     def _legacy_step_intent_name(self, base_intent: str, direction: str) -> str:
         direction = (direction or "").upper()
@@ -660,8 +1168,40 @@ class Aidy:
                 return False
             return None
 
+        if pending.pending_type == PENDING_NEED_TIMER_DURATION:
+            seconds = parse_timer_duration_seconds(text, default_unit="minutes", max_seconds=TIMER_MAX_SECONDS)
+            if seconds is None:
+                # STT often returns fuzzy numerics ("tree/free/for/ten").
+                n = parse_numeric_input(text)
+                if n is None:
+                    n = extract_steps_value(text)
+                if n is not None:
+                    seconds = max(1, min(600, int(n))) * 60
+            if seconds is None:
+                attempts = self.follow_up.register_invalid_attempt()
+                if attempts >= 3:
+                    self._cancel_pending(speak_cancelled=True)
+                    return False
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("need_timer_duration", "Say time like 5 minutes.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            self.follow_up.clear_pending()
+            self._cmd_log(f"timer duration parsed={seconds}s text='{text}'")
+            return self._start_timer(seconds, source_text=text)
+
         numeric = parse_numeric_input(text)
         if numeric is None:
+            # ASR often prepends wake residue ("hey ten"); extract the number token robustly.
+            numeric = extract_steps_value(text)
+            if numeric is not None:
+                self._cmd_log(f"pending numeric fallback '{text}' -> {numeric}")
+        if numeric is None:
+            norm_text = self._normalize_wake_text(text)
+            if is_wake_phrase(norm_text) or self._is_greeting_only(norm_text):
+                self._cmd_log(f"pending numeric ignored wake-like='{norm_text}'")
+                return False
             attempts = self.follow_up.register_invalid_attempt()
             if attempts >= 2:
                 self._cancel_pending(speak_cancelled=True)
@@ -671,6 +1211,8 @@ class Aidy:
             self._deafen_after_speak()
             ui_state("IDLE")
             return False
+        numeric = max(1, min(10, int(numeric)))
+        self._cmd_log(f"pending numeric resolved={numeric} text='{text}'")
 
         if pending.pending_type == PENDING_NEED_STEPS:
             ok = self._execute_intent(
@@ -738,16 +1280,16 @@ class Aidy:
                 return "close app", {"app": app["id"]}
             return None, {}
 
-        if t0.startswith(("open ", "launch ", "start ", "run ")):
+        if t0.startswith(("open ", "open up ", "launch ", "start ", "run ", "go to ", "go ", "visit ", "show ")):
             app_name = extract_app_name(t0)
             app = find_app(self.apps, app_name)
             if app:
                 return "open app", {"app": app["id"]}
             return None, {}
 
-        if t0 in ("volume up", "sound up", "increase volume", "louder", "make it louder"):
+        if t0 in ("volume up", "voice up", "sound up", "increase volume", "increase voice", "louder", "make it louder"):
             return "volume up", {"steps": 6}
-        if t0 in ("volume down", "sound down", "decrease volume", "quieter", "make it quieter"):
+        if t0 in ("volume down", "voice down", "sound down", "decrease volume", "decrease voice", "quieter", "make it quieter"):
             return "volume down", {"steps": 6}
 
         if t0 in ("brightness up", "increase brightness", "brighten screen", "make screen brighter"):
@@ -795,6 +1337,196 @@ class Aidy:
 
         return None, {}
 
+    def _is_timer_start_request(self, normalized_text: str) -> bool:
+        t = " ".join((normalized_text or "").strip().lower().split())
+        if not t:
+            return False
+        if t in TIMER_START_PHRASES:
+            return True
+        for p in TIMER_START_PHRASES:
+            if t.startswith(p + " "):
+                return True
+        # Fallback for rough STT variants ("timer/taymer/tamer/time").
+        tokens = t.split()
+        if any(tok in {"timer", "taymer", "taimer", "tamer", "tymer", "timerr", "timmer", "таймер"} for tok in tokens):
+            return True
+        if t.startswith(("set time", "start time", "put time")):
+            return True
+        return False
+
+    def _normalize_spoken_command(self, text: str) -> str:
+        t = " ".join((text or "").strip().lower().split())
+        if not t:
+            return t
+        if t in {"volume up", "volume down", "brightness up", "brightness down"}:
+            return t
+
+        normalize_map = {
+            "up": "volume up",
+            "down": "volume down",
+            "open louder": "volume up",
+            "open louder up": "volume up",
+            "open lower": "volume down",
+            "open lower down": "volume down",
+            "open whats app": "open whatsapp",
+            "open whatsup": "open whatsapp",
+            "open whats up": "open whatsapp",
+            "open what s app": "open whatsapp",
+            "open watsap": "open whatsapp",
+            "open watsapp": "open whatsapp",
+            "open whatsapp web": "open whatsapp",
+            "whatsapp web": "whatsapp",
+            "whats app web": "whatsapp",
+            "timer please": "timer",
+            "set timer": "timer",
+            "set a timer": "timer",
+            "start timer": "timer",
+            "start a timer": "timer",
+            "tamer": "timer",
+            "taymer": "timer",
+            "taimer": "timer",
+            "tymer": "timer",
+            "timerr": "timer",
+            "timmer": "timer",
+            "open dva up": "open whatsapp",
+            "open lock up": "open whatsapp",
+            "open the lock stop": "open whatsapp",
+            "open won up": "open whatsapp",
+            "open notes up": "open whatsapp",
+            "num up": "volume up",
+            "numb up": "volume up",
+            "nom up": "volume up",
+            "name up": "volume up",
+            "num down": "volume down",
+            "numb down": "volume down",
+            "nom down": "volume down",
+            "name down": "volume down",
+            "well him up": "volume up",
+            "well im up": "volume up",
+            "while im up": "volume up",
+            "will im up": "volume up",
+            "volume app": "volume up",
+            "volum up": "volume up",
+            "well you me up": "volume up",
+            "for them up": "volume up",
+            "for them app": "volume up",
+            "four them up": "volume up",
+            "well him down": "volume down",
+            "well im down": "volume down",
+            "while im down": "volume down",
+            "will im down": "volume down",
+            "volume dawn": "volume down",
+            "volum down": "volume down",
+            "well you me down": "volume down",
+            "for them down": "volume down",
+            "four them down": "volume down",
+            "them up": "volume up",
+            "then up": "volume up",
+            "them down": "volume down",
+            "then down": "volume down",
+        }
+
+        direct = normalize_map.get(t)
+        if direct:
+            self._cmd_log(f"normalize '{t}' -> '{direct}'")
+            return direct
+
+        if t.endswith(" him up") or (t.endswith("ume up") and "volume up" not in t):
+            self._cmd_log(f"normalize heuristic '{t}' -> 'volume up'")
+            return "volume up"
+        if t.endswith(" im up") and "volume up" not in t:
+            self._cmd_log(f"normalize heuristic '{t}' -> 'volume up'")
+            return "volume up"
+        if len(t.split()) == 2 and t.endswith(" up"):
+            p0 = t.split()[0]
+            if p0 in {"num", "numb", "nom", "name", "them", "then"}:
+                self._cmd_log(f"normalize heuristic '{t}' -> 'volume up'")
+                return "volume up"
+        if t.endswith(" him down") or (t.endswith("ume down") and "volume down" not in t):
+            self._cmd_log(f"normalize heuristic '{t}' -> 'volume down'")
+            return "volume down"
+        if t.endswith(" im down") and "volume down" not in t:
+            self._cmd_log(f"normalize heuristic '{t}' -> 'volume down'")
+            return "volume down"
+        if len(t.split()) == 2 and t.endswith(" down"):
+            p0 = t.split()[0]
+            if p0 in {"num", "numb", "nom", "name", "them", "then"}:
+                self._cmd_log(f"normalize heuristic '{t}' -> 'volume down'")
+                return "volume down"
+
+        return t
+
+    def _is_command_like_text(self, text: str) -> bool:
+        t = " ".join((text or "").strip().lower().split())
+        if not t:
+            return False
+        if len(t) < 3:
+            return False
+        if t in {"a", "i", "the", "hey", "ok", "okay", "hello", "hi", "they", "them"}:
+            return False
+
+        if t in COMMANDS:
+            return True
+        if t in MUTE_PHRASES or t in UNMUTE_PHRASES:
+            return True
+        if t in UNDO_LAST_PHRASES or t in UNDO_ALL_PHRASES:
+            return True
+        if t in REPEAT_PHRASES:
+            return True
+        if t in CLOSE_ACTIVE_PHRASES:
+            return True
+        if t in TIMER_START_PHRASES or t in TIMER_CANCEL_PHRASES:
+            return True
+
+        if detect_step_intent_from_text(t):
+            return True
+        if self._is_timer_start_request(t):
+            return True
+        for app in self.apps:
+            if t == (app.get("id") or "").strip().lower():
+                return True
+            for alias in (app.get("aliases") or []):
+                if t == str(alias).strip().lower():
+                    return True
+
+        if t.startswith(("open ", "open up ", "launch ", "start ", "run ", "go to ", "go ", "visit ", "show ")):
+            return True
+        if t.startswith(("close ", "quit ", "exit ", "kill ", "stop ")):
+            return True
+        if t == "switch" or t.startswith("switch ") or t in ("switch app", "switch window"):
+            return True
+
+        return False
+
+    def _is_non_action_utterance(self, text: str) -> bool:
+        t = self._normalize_wake_text(text)
+        if not t:
+            return True
+        if self._is_greeting_only(t) or is_wake_phrase(t):
+            return True
+        if t in {"im not certain", "i m not certain"}:
+            return True
+        return t in {"a", "i", "the", "they", "them", "uh", "um", "hmm", "mm", "mhm"}
+
+    def _is_ambiguous_mixed_command(self, normalized_text: str) -> bool:
+        t = " ".join((normalized_text or "").strip().lower().split())
+        if not t:
+            return False
+        if self._is_command_like_text(t):
+            return False
+
+        tokens = set(t.split())
+        has_volume = bool(tokens & {"volume", "sound", "voice", "mute", "unmute", "louder", "quieter"})
+        has_brightness = bool(tokens & {"brightness", "bright", "brighter", "dim", "dimmer", "screen"})
+        has_timer = bool(tokens & {"timer", "minute", "minutes", "second", "seconds"})
+        has_power = bool(tokens & {"shutdown", "restart", "lock"})
+        has_switch = bool(tokens & {"switch", "window", "desktop"})
+
+        domains = sum(
+            1 for hit in (has_volume, has_brightness, has_timer, has_power, has_switch) if hit
+        )
+        return domains >= 2
+
     def _execute_intent(self, intent: str, entities: dict) -> bool:
         if intent == "volume_change":
             direction = (entities.get("direction") or "").upper()
@@ -808,7 +1540,12 @@ class Aidy:
                 self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Decreasing volume"))
             self._deafen_after_speak()
             ui_state("EXECUTING")
-            volume_steps(up=(direction == "UP"), steps=steps)
+            if not self._apply_volume_steps(up=(direction == "UP"), steps=steps):
+                ui_state("ERROR")
+                self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
             base_entities = dict(entities or {})
             base_entities.pop("direction", None)
             base_entities.pop("magnitude_steps", None)
@@ -864,8 +1601,12 @@ class Aidy:
             self._deafen_after_speak()
             ui_state("EXECUTING")
             ok = set_volume_percent(int(value))
-            if not ok:
-                volume_steps(up=True, steps=1)
+            if not ok and not self._apply_volume_steps(up=True, steps=1):
+                ui_state("ERROR")
+                self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
             ui_state("SUCCESS")
             self._sleep_success()
             ui_state("IDLE")
@@ -877,7 +1618,12 @@ class Aidy:
             self.voice.play_or_tts("volume_up", VOICE_RESPONSES.get("volume up", "Adjusting volume"))
             self._deafen_after_speak()
             ui_state("EXECUTING")
-            volume_steps(up=True, steps=steps)
+            if not self._apply_volume_steps(up=True, steps=steps):
+                ui_state("ERROR")
+                self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
             ui_state("SUCCESS")
             self._sleep_success()
             ui_state("IDLE")
@@ -889,7 +1635,12 @@ class Aidy:
             self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Adjusting volume"))
             self._deafen_after_speak()
             ui_state("EXECUTING")
-            volume_steps(up=False, steps=steps)
+            if not self._apply_volume_steps(up=False, steps=steps):
+                ui_state("ERROR")
+                self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
             ui_state("SUCCESS")
             self._sleep_success()
             ui_state("IDLE")
@@ -1068,23 +1819,97 @@ class Aidy:
         self.history.break_chain()
         return True
 
-    def _confirm_and_schedule(self, intent: str, entities: dict, delay_seconds: int) -> bool:
+    def _speak_confirm_prompt(self):
         ui_state("SPEAKING")
-        self.voice.play_or_tts("are_you_sure", "Are you sure?")
-        self._deafen_after_speak()
+        spoken = False
+        try:
+            # Keep old voice, but trim only trailing silence tail (do not cut words).
+            spoken = bool(self.voice.play_key("are_you_sure_old", max_ms=900))
+            if spoken:
+                self._cmd_log("confirm prompt source=clip key='are_you_sure_old'")
+        except Exception:
+            spoken = False
+        if not spoken:
+            try:
+                spoken = bool(self.voice.play_key("are_you_sure_01"))
+                if spoken:
+                    self._cmd_log("confirm prompt source=clip key='are_you_sure_01'")
+            except Exception:
+                spoken = False
+        if not spoken:
+            spoken = bool(self.voice.tts_blocking("Are you sure?"))
+            if spoken:
+                self._cmd_log("confirm prompt source=tts text='Are you sure?'")
+        self._deafen_after_speak(90)
+        ui_state("CONFIRM")
+        info("Confirm: awaiting answer")
+        self._cmd_log("confirm expected")
+
+    def _speak_confirm_retry(self):
+        ui_state("CONFIRM")
+        info("Confirm: awaiting answer")
+        self._cmd_log("confirm retry expected")
+
+    def _listen_confirm_reply(self, extra_grammar_phrases: set[str] | None = None) -> str | None:
+        grammar = set(CONFIRM_GRAMMAR_PHRASES)
+        grammar.update({"yes yes", "no no", "jes", "yas", "yess", "ye", "yse"})
+        for phrase in (extra_grammar_phrases or set()):
+            p = " ".join(str(phrase or "").strip().lower().split())
+            if p:
+                grammar.add(p)
+        reply = self.listen_command_vosk(
+            max_seconds=6,
+            min_listen_ms=500,
+            ui_state_label="CONFIRM",
+            use_grammar=True,
+            speak_on_empty=False,
+            grammar_phrases=sorted(grammar),
+        )
+        if reply:
+            return reply
+        self._cmd_log("confirm grammar empty -> retry free-form")
+        return self.listen_command_vosk(
+            max_seconds=5,
+            min_listen_ms=420,
+            ui_state_label="CONFIRM",
+            use_grammar=False,
+            speak_on_empty=False,
+        )
+
+    def _classify_confirm_reply(self, reply: str, extra_yes_phrases: set[str] | None = None) -> str | None:
+        t = " ".join((reply or "").strip().lower().split())
+        if not t:
+            return None
+
+        if t in CONFIRM_YES:
+            return "yes"
+        if t in CONFIRM_NO:
+            return "no"
+
+        extra_yes = {self._normalize_wake_text(v) for v in (extra_yes_phrases or set()) if v}
+        nt = self._normalize_wake_text(t)
+        if nt in extra_yes:
+            return "yes"
+
+        tokens = nt.split()
+        no_tokens = {"no", "nope", "nah", "cancel", "stop", "dont", "not", "never", "know"}
+        yes_tokens = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "proceed", "jes", "yas", "yess", "ye", "yse"}
+        # Safety-first: "no" wins if mixed tokens are detected.
+        if any(tok in no_tokens for tok in tokens):
+            return "no"
+        if extra_yes and "close" in tokens:
+            return "yes"
+        if any(tok in yes_tokens for tok in tokens):
+            return "yes"
+        return None
+
+    def _confirm_and_schedule(self, intent: str, entities: dict, delay_seconds: int) -> bool:
+        self._speak_confirm_prompt()
 
         for attempt in range(2):
-            reply = self.listen_command_vosk(max_seconds=6, min_listen_ms=1200, ui_state_label="CONFIRM")
-            if not reply:
-                self.context_mgr.clear_context()
-                ui_state("WARNING")
-                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
-                self._deafen_after_speak()
-                ui_state("IDLE")
-                return False
-
-            t = " ".join(reply.lower().split())
-            if t in CONFIRM_YES:
+            reply = self._listen_confirm_reply()
+            decision = self._classify_confirm_reply(reply or "")
+            if decision == "yes":
                 task = Task(id=0, action_intent=intent, entities=entities, execute_at=0)
                 task_id = self.scheduler.schedule(task, delay_seconds)
                 if not task_id:
@@ -1105,7 +1930,7 @@ class Aidy:
                 ui_state("IDLE")
                 return True
 
-            if t in CONFIRM_NO:
+            if decision == "no":
                 self.context_mgr.clear_context()
                 ui_state("WARNING")
                 self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
@@ -1114,9 +1939,7 @@ class Aidy:
                 return False
 
             if attempt == 0:
-                ui_state("SPEAKING")
-                self.voice.play_or_tts("confirm_retry", "Please say confirm or cancel.")
-                self._deafen_after_speak()
+                self._speak_confirm_retry()
 
         self.context_mgr.clear_context()
         ui_state("WARNING")
@@ -1126,6 +1949,7 @@ class Aidy:
         return False
 
     def _handle_due_tasks(self):
+        self._update_timer()
         due = self.scheduler.tick()
         for task in due:
             ok = self._execute_intent(task.action_intent, task.entities)
@@ -1139,21 +1963,12 @@ class Aidy:
                 ui_state("IDLE")
                 self.history.break_chain()
     def _confirm_and_execute(self, intent: str, exec_fn, original_text: str | None = None):
-        ui_state("SPEAKING")
-        self.voice.play_or_tts("are_you_sure", "Are you sure?")
-        self._deafen_after_speak()
+        self._speak_confirm_prompt()
 
         for attempt in range(2):
-            reply = self.listen_command_vosk(max_seconds=6, min_listen_ms=1200, ui_state_label="CONFIRM")
-            if not reply:
-                ui_state("WARNING")
-                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
-                self._deafen_after_speak()
-                ui_state("IDLE")
-                return False
-
-            t = " ".join(reply.lower().split())
-            if t in CONFIRM_YES:
+            reply = self._listen_confirm_reply()
+            decision = self._classify_confirm_reply(reply or "")
+            if decision == "yes":
                 if original_text:
                     self._set_last_command(original_text)
                 else:
@@ -1186,7 +2001,7 @@ class Aidy:
                     self.history.break_chain()
                     return False
 
-            if t in CONFIRM_NO:
+            if decision == "no":
                 ui_state("WARNING")
                 self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
                 self._deafen_after_speak()
@@ -1195,9 +2010,7 @@ class Aidy:
                 return False
 
             if attempt == 0:
-                ui_state("SPEAKING")
-                self.voice.play_or_tts("confirm_retry", "Please say confirm or cancel.")
-                self._deafen_after_speak()
+                self._speak_confirm_retry()
 
         ui_state("WARNING")
         self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
@@ -1207,25 +2020,16 @@ class Aidy:
         return False
 
     def _confirm_close_request(self) -> bool:
-        ui_state("SPEAKING")
-        self.voice.play_or_tts("are_you_sure", "Are you sure?")
-        self._deafen_after_speak()
+        self._speak_confirm_prompt()
+        extra_yes = {"close", "close it", "close app", "do it", "yes close"}
 
         for attempt in range(2):
-            reply = self.listen_command_vosk(max_seconds=6, min_listen_ms=1200, ui_state_label="CONFIRM")
-            if not reply:
-                ui_state("WARNING")
-                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
-                self._deafen_after_speak()
-                ui_state("IDLE")
-                self.history.break_chain()
-                return False
-
-            t = " ".join(reply.lower().split())
-            if t in CONFIRM_YES:
+            reply = self._listen_confirm_reply(extra_grammar_phrases=extra_yes)
+            decision = self._classify_confirm_reply(reply or "", extra_yes_phrases=extra_yes)
+            if decision == "yes":
                 return True
 
-            if t in CONFIRM_NO:
+            if decision == "no":
                 ui_state("WARNING")
                 self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
                 self._deafen_after_speak()
@@ -1234,9 +2038,7 @@ class Aidy:
                 return False
 
             if attempt == 0:
-                ui_state("SPEAKING")
-                self.voice.play_or_tts("confirm_retry", "Please say confirm or cancel.")
-                self._deafen_after_speak()
+                self._speak_confirm_retry()
 
         ui_state("WARNING")
         self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
@@ -1263,8 +2065,12 @@ class Aidy:
                 self._deafen_after_speak()
                 ui_state("EXECUTING")
                 ok = set_volume_percent(int(value))
-                if not ok:
-                    volume_steps(up=True, steps=1)
+                if not ok and not self._apply_volume_steps(up=True, steps=1):
+                    ui_state("ERROR")
+                    self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                    self._deafen_after_speak()
+                    ui_state("IDLE")
+                    return False
                 ui_state("SUCCESS")
                 self._sleep_success()
                 ui_state("IDLE")
@@ -1276,7 +2082,12 @@ class Aidy:
                 self.voice.play_or_tts("volume_up", VOICE_RESPONSES.get("volume up", "Adjusting volume"))
                 self._deafen_after_speak()
                 ui_state("EXECUTING")
-                volume_steps(up=True, steps=steps)
+                if not self._apply_volume_steps(up=True, steps=steps):
+                    ui_state("ERROR")
+                    self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                    self._deafen_after_speak()
+                    ui_state("IDLE")
+                    return False
                 ui_state("SUCCESS")
                 self._sleep_success()
                 ui_state("IDLE")
@@ -1288,7 +2099,12 @@ class Aidy:
                 self.voice.play_or_tts("volume_down", VOICE_RESPONSES.get("volume down", "Adjusting volume"))
                 self._deafen_after_speak()
                 ui_state("EXECUTING")
-                volume_steps(up=False, steps=steps)
+                if not self._apply_volume_steps(up=False, steps=steps):
+                    ui_state("ERROR")
+                    self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                    self._deafen_after_speak()
+                    ui_state("IDLE")
+                    return False
                 ui_state("SUCCESS")
                 self._sleep_success()
                 ui_state("IDLE")
@@ -1316,8 +2132,9 @@ class Aidy:
                 app = find_app(self.apps, app_id)
                 if not app:
                     return False
-                if not self._confirm_close_request():
-                    return False
+                if (app.get("type") or "").strip().lower() != "url":
+                    if not self._confirm_close_request():
+                        return False
                 ui_state("SPEAKING")
                 self.voice.play_or_tts("close_app", f"Closing {app['id']}")
                 self._deafen_after_speak()
@@ -1407,13 +2224,60 @@ class Aidy:
             self.history.break_chain()
             return False
 
+        normalized_text = self._normalize_spoken_command(text)
+        if normalized_text and normalized_text != " ".join((text or "").strip().lower().split()):
+            self._cmd_log(f"process remap -> '{normalized_text}'")
+            text = normalized_text
+
         t0 = " ".join((text or "").strip().lower().split())
-        pending_active = self.follow_up.get_pending() is not None
+        pending = self.follow_up.get_pending()
+        pending_active = pending is not None
+        pending_type = pending.pending_type if pending else None
+        self._cmd_log(
+            f"route text='{t0}' pending={'on' if pending_active else 'off'} "
+            f"follow={'on' if self.follow_mode.is_active() else 'off'}"
+        )
 
         if t0 in ("cancel", "stop") and pending_active:
             self._cancel_pending(speak_cancelled=True)
             self.history.break_chain()
             return False
+
+        if pending_type == PENDING_NEED_TARGET:
+            # Rephrase slot should be consumed by this utterance, then normal routing applies.
+            self.follow_up.clear_pending()
+            pending_active = False
+            pending_type = None
+
+        # Timer commands should work even if some previous numeric follow-up is pending.
+        if t0 in TIMER_CANCEL_PHRASES:
+            if pending_active:
+                self.follow_up.clear_pending()
+            self.follow_mode.clear()
+            self.last_step_actions.clear()
+            self.history.break_chain()
+            return self._cancel_timer(announce=True)
+
+        if self._is_timer_start_request(t0):
+            if pending_active:
+                self.follow_up.clear_pending()
+            seconds = parse_timer_duration_seconds(text, default_unit="minutes", max_seconds=TIMER_MAX_SECONDS)
+            if seconds is None:
+                self.follow_up.set_pending(
+                    PendingAction(
+                        pending_type=PENDING_NEED_TIMER_DURATION,
+                        base_intent="timer",
+                        entities={},
+                    )
+                )
+                self._cmd_log("timer pending created; waiting duration")
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("timer_how_long", "For how long?")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            self._cmd_log(f"timer start parsed={seconds}s text='{text}'")
+            return self._start_timer(seconds, source_text=text)
 
         if pending_active and (t0 in MORE_ACTION_PHRASES or t0 in LESS_ACTION_PHRASES):
             ui_state("SPEAKING")
@@ -1422,7 +2286,7 @@ class Aidy:
             ui_state("IDLE")
             return False
 
-        pending_result = self._handle_pending_numeric_flow(text)
+        pending_result = self._handle_pending_numeric_flow(text) if pending_active else None
         if pending_result is not None:
             return pending_result
 
@@ -1460,6 +2324,11 @@ class Aidy:
             ui_state("SPEAKING")
             self.voice.play_or_tts("follow_mode_hint", "Say 'more', 'less', or the wake word.")
             self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
+        if self._is_non_action_utterance(t0):
+            self._cmd_log(f"ignore non-action command='{t0}'")
             ui_state("IDLE")
             return False
 
@@ -1635,8 +2504,9 @@ class Aidy:
                 self.history.break_chain()
                 return False
 
-            if not self._confirm_close_request():
-                return False
+            if (app.get("type") or "").strip().lower() != "url":
+                if not self._confirm_close_request():
+                    return False
 
             ui_state("SPEAKING")
             self.voice.play_or_tts("close_app", f"Closing {app['id']}")
@@ -1711,7 +2581,7 @@ class Aidy:
                     )
                 )
                 ui_state("SPEAKING")
-                self.voice.play_or_tts("how_much", "How much?")
+                self._speak_steps_prompt(cfg["base"])
                 self._deafen_after_speak()
                 ui_state("IDLE")
                 return False
@@ -1751,7 +2621,7 @@ class Aidy:
                 self.history.break_chain()
                 return False
 
-        if t0.startswith(("open ", "launch ", "start ", "run ")):
+        if t0.startswith(("open ", "open up ", "launch ", "start ", "run ", "go to ", "go ", "visit ", "show ")):
             app_name = extract_app_name(t0)
             app = find_app(self.apps, app_name)
 
@@ -1788,6 +2658,13 @@ class Aidy:
                     self.history.break_chain()
                     return False
 
+            ui_state("WARNING")
+            self.voice.play_or_tts("app_not_found", "I couldn't find that app")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            self.history.break_chain()
+            return False
+
         if t0 == "switch" or t0.startswith("switch ") or t0 in ("switch app", "switch window"):
             ui_state("EXECUTING")
             self._set_last_command(text)
@@ -1797,11 +2674,34 @@ class Aidy:
             self.start_window_switch()
             return True
 
+        if not self._is_command_like_text(t0):
+            self._cmd_log(f"reject non-command='{t0}'")
+            ui_state("WARNING")
+            if not self.voice.muted:
+                self.voice.play_or_tts("not_sure", "I'm not sure what you mean")
+                self._deafen_after_speak()
+            ui_state("IDLE")
+            self.history.break_chain()
+            return False
+
+        if not self.intent_api_ready:
+            self.intent_api_ready = start_local_intent_api(self.base_dir)
+
+        if not self.intent_api_ready:
+            ui_state("WARNING")
+            if not self.voice.muted:
+                self.voice.play_or_tts("not_sure", "I'm not sure what you mean")
+                self._deafen_after_speak()
+            ui_state("IDLE")
+            self.history.break_chain()
+            return False
+
         ui_state("PROCESSING")
         info("Intent: sending to API...")
 
         result = self.api.get_intent(text)
         if not result:
+            self.intent_api_ready = False
             ui_state("WARNING")
             if not self.voice.muted:
                 self.voice.play_or_tts("not_sure", "I'm not sure what you mean")
@@ -1843,7 +2743,7 @@ class Aidy:
                     )
                 )
                 ui_state("SPEAKING")
-                self.voice.play_or_tts("how_much", "How much?")
+                self._speak_steps_prompt(cfg["base"])
                 self._deafen_after_speak()
                 ui_state("IDLE")
                 return False
@@ -1919,8 +2819,9 @@ class Aidy:
                 self.history.break_chain()
                 return False
 
-            if not self._confirm_close_request():
-                return False
+            if (app.get("type") or "").strip().lower() != "url":
+                if not self._confirm_close_request():
+                    return False
 
             ui_state("SPEAKING")
             self.voice.play_or_tts("close_app", f"Closing {app['id']}")
@@ -2033,23 +2934,38 @@ class Aidy:
                             self.end_window_switch(cancel=True)
                     continue
 
-                if self.follow_up.get_pending():
+                pending = self.follow_up.get_pending()
+                if pending:
                     self._handle_due_tasks()
+                    is_rephrase = pending.pending_type == PENDING_NEED_TARGET
+                    is_timer_pending = pending.pending_type == PENDING_NEED_TIMER_DURATION
                     cmd_text = self.listen_command_vosk(
-                        max_seconds=8,
-                        min_listen_ms=800,
-                        ui_state_label="FOLLOWUP",
+                        max_seconds=(10 if is_timer_pending else (12 if is_rephrase else 8)),
+                        min_listen_ms=(600 if is_timer_pending else 800),
+                        ui_state_label=("LISTENING" if is_rephrase else "FOLLOWUP"),
+                        use_grammar=(pending.pending_type not in (PENDING_NEED_TIMER_DURATION, PENDING_NEED_TARGET)),
                     )
                     if cmd_text:
                         self._safe_process_command(cmd_text)
                     else:
+                        if is_timer_pending:
+                            attempts = self.follow_up.register_invalid_attempt()
+                            if attempts < 3:
+                                self._cmd_log(
+                                    f"timer pending empty attempt={attempts}; reprompt duration"
+                                )
+                                ui_state("SPEAKING")
+                                self.voice.play_or_tts("timer_how_long", "For how long?")
+                                self._deafen_after_speak()
+                                ui_state("IDLE")
+                                continue
                         self.follow_up.clear_pending()
                         ui_state("IDLE")
                     continue
 
                 if self.follow_mode.is_active():
                     self._handle_due_tasks()
-                    cmd_text = self.listen_command_vosk(
+                    cmd_text = self.listen_command_smart(
                         max_seconds=6,
                         min_listen_ms=700,
                         ui_state_label="LISTENING",
@@ -2067,13 +2983,11 @@ class Aidy:
                         if routed.get("kind") == "wake":
                             self.follow_mode.clear()
                             tail = (routed.get("tail") or "").strip()
-                            ui_state("SPEAKING")
-                            self.voice.play_or_tts("wake", "I am here, sir")
-                            self._deafen_after_speak()
+                            self._play_wake_ack()
                             if tail:
                                 self._safe_process_command(tail)
                             else:
-                                cmd2 = self.listen_command_vosk(max_seconds=20)
+                                cmd2 = self.listen_command_smart(max_seconds=20)
                                 if cmd2:
                                     self._safe_process_command(cmd2)
                                 else:
@@ -2084,12 +2998,26 @@ class Aidy:
                         ui_state("IDLE")
                     continue
 
-                self.wait_for_wake()
+                wake_tail = self.wait_for_wake()
                 self._handle_due_tasks()
-                cmd_text = self.listen_command_vosk(max_seconds=20)
+                if wake_tail:
+                    if self._is_non_action_utterance(wake_tail):
+                        self._cmd_log(f"wake tail ignored non-action='{wake_tail}'")
+                        ui_state("IDLE")
+                        continue
+                    self._cmd_log(f"wake tail='{wake_tail}'")
+                    self._safe_process_command(wake_tail)
+                    continue
+
+                cmd_text = self._listen_post_wake_command(max_attempts=2)
+                if cmd_text == "__SKIP_WAKE_COMMAND__":
+                    self._cmd_log("post-wake aborted; back to wake mode")
+                    ui_state("IDLE")
+                    continue
                 if cmd_text:
                     self._safe_process_command(cmd_text)
                 else:
+                    self._cmd_log("post-wake empty; back to wake mode")
                     ui_state("IDLE")
 
         except KeyboardInterrupt:
@@ -2104,6 +3032,7 @@ class Aidy:
             self.stop_stream()
             self.audio.terminate()
             info("AIDY stopped")
+
 
 
 

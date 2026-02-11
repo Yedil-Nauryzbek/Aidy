@@ -17,32 +17,51 @@ def is_port_open(host: str, port: int, timeout=0.25) -> bool:
         return False
 
 
+def _resolve_api_dir(base_dir: str) -> str | None:
+    base_dir = os.path.abspath(base_dir or ".")
+    candidates = [
+        os.path.join(base_dir, "Api"),
+        os.path.join(base_dir, "PythonCore", "Api"),
+        os.path.join(os.path.dirname(base_dir), "Api"),
+    ]
+
+    for api_dir in candidates:
+        app_py = os.path.join(api_dir, "app.py")
+        if os.path.exists(app_py):
+            return api_dir
+    return None
+
+
 def start_local_intent_api(base_dir: str):
     host, port = "127.0.0.1", 8008
     if is_port_open(host, port):
         return True
 
-    api_dir = os.path.join(base_dir, "Api")
-    app_py = os.path.join(api_dir, "app.py")
-    if not os.path.exists(app_py):
-        warn(f"Local API not found: {app_py}")
+    api_dir = _resolve_api_dir(base_dir)
+    if not api_dir:
+        warn(f"Local API not found near base_dir={base_dir}")
         return False
 
     py = sys.executable
 
     try:
+        env = os.environ.copy()
+        env.setdefault("TRANSFORMERS_OFFLINE", "1")
+        env.setdefault("HF_HUB_OFFLINE", "1")
+
         subprocess.Popen(
             [py, "-m", "uvicorn", "app:app", "--host", host, "--port", str(port)],
             cwd=api_dir,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            env=env,
         )
     except Exception as e:
         warn(f"Failed to start local API: {e}")
         return False
 
-    for _ in range(30):
+    for _ in range(50):
         if is_port_open(host, port):
             return True
         time.sleep(0.1)
@@ -57,7 +76,8 @@ class IntentAPI:
 
     def get_intent(self, text: str):
         try:
-            r = requests.post(self.url, json={"text": text}, timeout=5)
+            # Keep API fallback responsive so recognition loop never "hangs" on a bad request.
+            r = requests.post(self.url, json={"text": text}, timeout=(0.6, 2.5))
             if r.status_code == 200:
                 return r.json()
             error(f"API error: HTTP {r.status_code}")

@@ -216,6 +216,101 @@
       "target": "C:\\Program Files (x86)\\Steam\\Steam.exe",
       "args": [],
       "process": "steam.exe"
+    },
+    {
+      "id": "youtube",
+      "aliases": [
+        "youtube",
+        "you tube",
+        "u tube",
+        "utube",
+        "you toob",
+        "you too",
+        "you tu",
+        "youtub",
+        "yo tube",
+        "yt",
+        "youtube site",
+        "youtube page"
+      ],
+      "type": "url",
+      "target": "https://www.youtube.com",
+      "args": [],
+      "process": "",
+      "browser_processes": [
+        "opera.exe",
+        "msedge.exe",
+        "chrome.exe",
+        "browser.exe",
+        "firefox.exe",
+        "brave.exe"
+      ]
+    },
+    {
+      "id": "gpt",
+      "aliases": [
+        "gpt",
+        "g p t",
+        "gp t",
+        "gpt site",
+        "chatgpt",
+        "chat gpt",
+        "chat gp t",
+        "chat g p t",
+        "chat pt",
+        "chat geepity",
+        "chat g p d",
+        "open gpt",
+        "open chatgpt"
+      ],
+      "type": "url",
+      "target": "https://chatgpt.com",
+      "args": [],
+      "process": "",
+      "browser_processes": [
+        "opera.exe",
+        "msedge.exe",
+        "chrome.exe",
+        "browser.exe",
+        "firefox.exe",
+        "brave.exe"
+      ]
+    },
+    {
+      "id": "whatsapp_web",
+      "aliases": [
+        "whatsapp",
+        "whats app",
+        "whatsup",
+        "what s app",
+        "watsap",
+        "watsapp",
+        "whatsap",
+        "what app",
+        "whats up",
+        "what s up",
+        "whatsapp web",
+        "whats app web",
+        "open whatsapp",
+        "open whatsup",
+        "open whats up",
+        "open watsap",
+        "open whatsapp web",
+        "open whats app",
+        "open whats app web"
+      ],
+      "type": "url",
+      "target": "https://web.whatsapp.com",
+      "args": [],
+      "process": "",
+      "browser_processes": [
+        "opera.exe",
+        "msedge.exe",
+        "chrome.exe",
+        "browser.exe",
+        "firefox.exe",
+        "brave.exe"
+      ]
     }
   ]
 }

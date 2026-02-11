@@ -16,15 +16,19 @@ STEP_REQUIRED = {
 STEP_REQUIRED_PHRASES = {
     "volume_up": {
         "volume up",
+        "voice up",
         "sound up",
         "increase volume",
+        "increase voice",
         "louder",
         "make it louder",
     },
     "volume_down": {
         "volume down",
+        "voice down",
         "sound down",
         "decrease volume",
+        "decrease voice",
         "quieter",
         "make it quieter",
     },
@@ -142,7 +146,7 @@ class DecisionCore:
                     entities={k: v for k, v in payload.items() if k != "magnitude_steps"},
                 )
             )
-            return {"handled": True, "executed": False, "prompt": "How much?"}
+            return {"handled": True, "executed": False, "prompt": "By how much?"}
 
         value = int(steps)
         value = max(1, min(10, value))

@@ -6,14 +6,43 @@ _UNIT_RE = re.compile(
     r"^(seconds?|sec|s|settings|setting|setings|seting|sekends|sekend|sekkonds|minutes?|mins?|min|m)$",
     re.IGNORECASE,
 )
+_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 
 _NUMBER_WORDS = {
+    "a": 1, "an": 1,
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
     "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
     "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
     "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
     "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+    "odin": 1, "odna": 1,
+    "dva": 2, "dve": 2,
+    "tri": 3,
+    "chetyre": 4, "chetire": 4,
+    "pyat": 5, "piat": 5,
+    "shest": 6,
+    "sem": 7,
+    "vosem": 8, "vosim": 8,
+    "devyat": 9, "deviat": 9,
+    "desyat": 10, "desiat": 10,
 }
+
+_MINUTE_UNITS = {
+    "m", "min", "mins", "minute", "minutes",
+    "minuta", "minuty", "minut",
+}
+_SECOND_UNITS = {
+    "s", "sec", "secs", "second", "seconds",
+    "set", "settings", "setting", "setings", "seting", "sekends", "sekend", "sekkonds",
+    "sek", "sekunda", "sekundy", "sekund",
+}
+
+
+def _tokenize(text: str) -> list[str]:
+    raw = " ".join((text or "").strip().lower().split())
+    if not raw:
+        return []
+    return re.findall(_TOKEN_RE, raw)
 
 
 def _parse_num(token: str) -> int | None:
@@ -29,22 +58,67 @@ def _unit_to_seconds(unit: str | None) -> int:
     if not unit:
         return 1
     u = unit.strip().lower()
-    if u.startswith("set") or u.startswith("sek"):
+    if u in _SECOND_UNITS or u.startswith("set") or u.startswith("sek"):
         return 1
-    if u.startswith("m"):
+    if u in _MINUTE_UNITS or u.startswith("m"):
         return 60
     return 1
+
+
+def _extract_number(tokens: list[str]) -> tuple[int, int] | None:
+    for i, tok in enumerate(tokens):
+        value = _parse_num(tok)
+        if value is not None:
+            return value, i
+    return None
+
+
+def parse_timer_duration_seconds(
+    text: str,
+    default_unit: str = "minutes",
+    max_seconds: int = 12 * 60 * 60,
+) -> int | None:
+    tokens = _tokenize(text)
+    if not tokens:
+        return None
+
+    found = _extract_number(tokens)
+    if found is None:
+        # Allow bare unit like "minute" as 1 minute.
+        for tok in tokens:
+            if tok in _MINUTE_UNITS:
+                return 60
+            if tok in _SECOND_UNITS:
+                return 1
+        return None
+    value, idx = found
+
+    unit = None
+    if idx + 1 < len(tokens):
+        unit = tokens[idx + 1]
+    elif idx - 1 >= 0:
+        unit = tokens[idx - 1]
+
+    if unit and (unit not in _MINUTE_UNITS and unit not in _SECOND_UNITS):
+        unit = None
+
+    if unit is None:
+        fallback = default_unit.strip().lower()
+        multiplier = 60 if fallback.startswith("min") else 1
+    else:
+        multiplier = _unit_to_seconds(unit)
+
+    delay_seconds = int(value) * int(multiplier)
+    if delay_seconds <= 0 or delay_seconds > int(max_seconds):
+        return None
+    return delay_seconds
 
 
 def parse_delay_request(text: str) -> tuple[str, int] | None:
     if not text:
         return None
 
-    raw = " ".join((text or "").strip().lower().split())
-    if not raw:
-        return None
-
-    tokens = re.findall(r"[a-z0-9]+", raw)
+    tokens = _tokenize(text)
     if len(tokens) < 2:
         return None
 
