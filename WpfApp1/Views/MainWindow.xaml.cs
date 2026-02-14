@@ -30,8 +30,13 @@ namespace WpfApp1.Views
         private DoubleAnimation _waveSpeaking = null!;
         private DoubleAnimation _waveProcessing = null!;
         private readonly DispatcherTimer _waveformTimer;
+        private readonly DispatcherTimer _studyTimerUiTimer;
         private readonly Random _waveformRandom = new();
         private bool _waveformAnimating;
+        private int _studyTimerTotalSeconds;
+        private double _studyTimerRemainingPreciseSec;
+        private DateTime _studyTimerLastFrameUtc = DateTime.UtcNow;
+        private readonly SolidColorBrush _studyTimerArcBrush = new(Color.FromRgb(0x57, 0xF2, 0x87));
         private const int WM_NCHITTEST = 0x0084;
         private const int HTTRANSPARENT = -1;
         private bool _isCompactMode;
@@ -95,6 +100,11 @@ namespace WpfApp1.Views
                 Interval = TimeSpan.FromMilliseconds(70)
             };
             _waveformTimer.Tick += WaveformTimerOnTick;
+            _studyTimerUiTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(33),
+            };
+            _studyTimerUiTimer.Tick += StudyTimerUiTimerOnTick;
 
             _bridge.StateChanged += s => Dispatcher.Invoke(() => { _vm.CurrentState = s; Console.WriteLine($"[UI] State changed to {s}"); });
             // Logs are intentionally hidden from UI.
@@ -104,6 +114,15 @@ namespace WpfApp1.Views
             _bridge.CommandHeard += t => Dispatcher.Invoke(() =>
             {
                 _vm.LastCommand = FormatUserFacingCommand(t);
+            });
+            _bridge.TimerChanged += (eventName, remaining, total) => Dispatcher.Invoke(() =>
+            {
+                var e = (eventName ?? "").Trim().ToLowerInvariant();
+                UpdateTimerBadge(e, remaining, total);
+            });
+            _bridge.StudyModeChanged += active => Dispatcher.Invoke(() =>
+            {
+                StudyTipsPanel.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
             });
 
             Loaded += (_, __) =>
@@ -116,6 +135,30 @@ namespace WpfApp1.Views
             };
 
             Closing += (_, __) => _bridge.Dispose();
+        }
+
+        private void StudyTimerUiTimerOnTick(object? sender, EventArgs e)
+        {
+            if (_studyTimerTotalSeconds <= 0 || _studyTimerRemainingPreciseSec <= 0)
+            {
+                _studyTimerUiTimer.Stop();
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            var delta = (now - _studyTimerLastFrameUtc).TotalSeconds;
+            if (delta < 0)
+            {
+                delta = 0;
+            }
+            _studyTimerLastFrameUtc = now;
+            _studyTimerRemainingPreciseSec = Math.Max(0.0, _studyTimerRemainingPreciseSec - delta);
+            RenderStudyTimer(_studyTimerRemainingPreciseSec, _studyTimerTotalSeconds);
+
+            if (_studyTimerRemainingPreciseSec <= 0.0)
+            {
+                _studyTimerUiTimer.Stop();
+            }
         }
 
         private void AttachOuterAreaClickThrough()
@@ -321,6 +364,152 @@ namespace WpfApp1.Views
             if (s.Length == 0) return true;
 
             return false;
+        }
+
+        private static string FormatTimerText(int seconds)
+        {
+            var s = Math.Max(0, seconds);
+            var ts = TimeSpan.FromSeconds(s);
+            if (ts.TotalHours >= 1)
+            {
+                return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}:{ts.Seconds:00}";
+            }
+            return $"{ts.Minutes:00}:{ts.Seconds:00}";
+        }
+
+        private static Point CirclePoint(double centerX, double centerY, double radius, double angleDeg)
+        {
+            var rad = angleDeg * Math.PI / 180.0;
+            return new Point(centerX + radius * Math.Cos(rad), centerY + radius * Math.Sin(rad));
+        }
+
+        private static Geometry BuildTimerArcGeometry(double ratio)
+        {
+            var r = Math.Clamp(ratio, 0.0, 1.0);
+            if (r <= 0.0)
+            {
+                return Geometry.Empty;
+            }
+
+            // ArcSegment cannot draw a true 360-degree arc in one segment.
+            if (r >= 1.0)
+            {
+                r = 0.9999;
+            }
+
+            const double size = 132.0;
+            const double stroke = 9.0;
+            var radius = (size - stroke) / 2.0;
+            var cx = size / 2.0;
+            var cy = size / 2.0;
+            var start = CirclePoint(cx, cy, radius, -90.0);
+            var sweep = 360.0 * r;
+            var end = CirclePoint(cx, cy, radius, -90.0 + sweep);
+
+            var figure = new PathFigure
+            {
+                StartPoint = start,
+                IsClosed = false,
+                IsFilled = false,
+            };
+            figure.Segments.Add(
+                new ArcSegment
+                {
+                    Point = end,
+                    Size = new Size(radius, radius),
+                    SweepDirection = SweepDirection.Clockwise,
+                    IsLargeArc = sweep >= 180.0,
+                }
+            );
+            return new PathGeometry(new[] { figure });
+        }
+
+        private static Color LerpColor(Color from, Color to, double t)
+        {
+            var k = Math.Clamp(t, 0.0, 1.0);
+            byte ch(byte a, byte b) => (byte)(a + (b - a) * k);
+            return Color.FromRgb(
+                ch(from.R, to.R),
+                ch(from.G, to.G),
+                ch(from.B, to.B)
+            );
+        }
+
+        private static Color TimerColorForRatio(double ratio)
+        {
+            var r = Math.Clamp(ratio, 0.0, 1.0);
+            var green = Color.FromRgb(0x57, 0xF2, 0x87);
+            var amber = Color.FromRgb(0xFF, 0xC2, 0x4D);
+            var red = Color.FromRgb(0xFF, 0x63, 0x6E);
+
+            if (r >= 0.5)
+            {
+                var t = (1.0 - r) / 0.5;
+                return LerpColor(green, amber, t);
+            }
+            else
+            {
+                var t = (0.5 - r) / 0.5;
+                return LerpColor(amber, red, t);
+            }
+        }
+
+        private void RenderStudyTimer(double remainingSec, int total)
+        {
+            var safeTotal = Math.Max(1, total);
+            var safeRemaining = Math.Max(0.0, remainingSec);
+            var ratio = safeRemaining / safeTotal;
+            var shownSeconds = Math.Max(0, (int)Math.Ceiling(safeRemaining));
+
+            StudyTimerText.Text = FormatTimerText(shownSeconds);
+            StudyTimerArc.Data = BuildTimerArcGeometry(ratio);
+            _studyTimerArcBrush.Color = TimerColorForRatio(ratio);
+            StudyTimerArc.Stroke = _studyTimerArcBrush;
+            StudyTimerWidget.Visibility = Visibility.Visible;
+        }
+
+        private void UpdateTimerBadge(string eventName, int remaining, int total)
+        {
+            var e = (eventName ?? "").Trim().ToLowerInvariant();
+            if (e == "start")
+            {
+                _studyTimerTotalSeconds = Math.Max(1, (total > 0 ? total : remaining));
+                _vm.TimerBadgeText = FormatTimerText(_studyTimerTotalSeconds);
+                _studyTimerRemainingPreciseSec = _studyTimerTotalSeconds;
+                _studyTimerLastFrameUtc = DateTime.UtcNow;
+                RenderStudyTimer(_studyTimerRemainingPreciseSec, _studyTimerTotalSeconds);
+                if (!_studyTimerUiTimer.IsEnabled)
+                {
+                    _studyTimerUiTimer.Start();
+                }
+                return;
+            }
+            if (e == "tick")
+            {
+                if (total > 0)
+                {
+                    _studyTimerTotalSeconds = Math.Max(1, total);
+                }
+                var effectiveTotal = Math.Max(1, _studyTimerTotalSeconds);
+                _vm.TimerBadgeText = FormatTimerText(remaining);
+                _studyTimerRemainingPreciseSec = Math.Max(0.0, remaining);
+                _studyTimerLastFrameUtc = DateTime.UtcNow;
+                RenderStudyTimer(_studyTimerRemainingPreciseSec, effectiveTotal);
+                if (!_studyTimerUiTimer.IsEnabled)
+                {
+                    _studyTimerUiTimer.Start();
+                }
+                return;
+            }
+            if (e is "stop" or "done")
+            {
+                _vm.TimerBadgeText = "";
+                _studyTimerTotalSeconds = 0;
+                _studyTimerRemainingPreciseSec = 0.0;
+                _studyTimerUiTimer.Stop();
+                StudyTimerArc.Data = Geometry.Empty;
+                StudyTimerWidget.Visibility = Visibility.Collapsed;
+            }
         }
 
         // =========================

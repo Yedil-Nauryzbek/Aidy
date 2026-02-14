@@ -19,6 +19,10 @@ def ui_timer(event: str, remaining_seconds: int, total_seconds: int):
             flush=True,
         )
 
+def ui_study_mode(active: bool):
+    if UI_MODE:
+        print(f"STUDYMODE:{'on' if active else 'off'}", flush=True)
+
 
 
 LOG_LEVEL = os.environ.get("AIDY_LOG", "INFO").upper()

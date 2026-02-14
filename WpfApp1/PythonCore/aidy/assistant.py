@@ -5,6 +5,10 @@ import csv
 import audioop
 import ctypes
 import subprocess
+import threading
+import io
+import sys
+from ctypes import wintypes
 
 import vosk
 import pyaudio
@@ -50,6 +54,12 @@ from .config import (
     TIMER_START_PHRASES,
     TIMER_CANCEL_PHRASES,
     TIMER_MAX_SECONDS,
+    STUDY_MODE_DIRECT_START_PHRASES,
+    STUDY_MODE_CONFIRM_START_PHRASES,
+    STUDY_MODE_START_PHRASES,
+    STUDY_MODE_START_ALIASES,
+    STUDY_MODE_STOP_PHRASES,
+    STUDY_MODE_STATUS_PHRASES,
     CONFIRM_GRAMMAR_PHRASES,
     CONFIRM_YES,
     CONFIRM_NO,
@@ -74,7 +84,7 @@ from .config import (
     FOLLOW_MODE_TTL_SECONDS,
     FOLLOW_MODE_REPEAT_LAST_STEPS,
 )
-from .logui import ui_state, ui_command, ui_timer, debug, info, warn, error, UI_MODE, LOG_LEVEL
+from .logui import ui_state, ui_command, ui_timer, ui_study_mode, debug, info, warn, error, UI_MODE, LOG_LEVEL
 from .voice import Voice
 from .apps import (
     load_apps_config,
@@ -131,6 +141,42 @@ COMMANDS = {
     "screenshot": lambda: take_screenshot(),
     "task manager": lambda: open_task_manager(),
 }
+
+INTENT_STUDY_MODE_START = "study_mode_start"
+INTENT_STUDY_MODE_STOP = "study_mode_stop"
+INTENT_STUDY_MODE_STATUS = "study_mode_status"
+
+STUDY_SESSION_SECONDS = 45 * 60
+STUDY_OPEN_URLS = (
+    "https://chatgpt.com",
+    "https://gemini.google.com",
+    "https://stepik.org",
+)
+
+DISTRACT_PROCESSES = (
+    "discord.exe",
+    "telegram.exe",
+    "steam.exe",
+    "epicgameslauncher.exe",
+    "spotify.exe",
+    "riotclientservices.exe",
+    "valorant.exe",
+    "leagueclient.exe",
+    "robloxplayerbeta.exe",
+    "minecraftlauncher.exe",
+)
+DISTRACT_GUARD_INTERVAL_SEC = 0.9
+DISTRACT_BLOCK_ANNOUNCE_COOLDOWN_SEC = 8.0
+DISTRACT_SOFT_CLOSE_WAIT_SEC = 1.15
+
+WM_CLOSE = 0x0010
+SW_MINIMIZE = 6
+SW_RESTORE = 9
+SMTO_ABORTIFHUNG = 0x0002
+GWL_EXSTYLE = -20
+WS_EX_TOOLWINDOW = 0x00000080
+
+_USER32 = ctypes.windll.user32
 
 
 def load_command_phrases(base_dir: str):
@@ -231,6 +277,1226 @@ class Aidy:
 
     def _cmd_log(self, msg: str):
         info(f"[CMD] {msg}")
+
+    def _study_log(self, msg: str):
+        stamp = time.strftime("%H:%M:%S")
+        entry = f"{stamp} {msg}"
+        with self._study_lock:
+            self.study_actions_log.append(entry)
+            if len(self.study_actions_log) > 300:
+                self.study_actions_log = self.study_actions_log[-300:]
+        info(f"[STUDY] {msg}")
+
+    def _study_default_allowed_processes(self) -> set[str]:
+        allowed = {
+            "explorer.exe",
+            "dwm.exe",
+            "shellexperiencehost.exe",
+            "startmenuexperiencehost.exe",
+            "searchhost.exe",
+            "runtimebroker.exe",
+            "sihost.exe",
+            "svchost.exe",
+            "wininit.exe",
+            "winlogon.exe",
+            "csrss.exe",
+            "services.exe",
+            "lsass.exe",
+            "conhost.exe",
+            "applicationframehost.exe",
+            "systemsettings.exe",
+            "wpfapp1.exe",
+            "code.exe",
+        }
+        return allowed
+
+    def _is_protected_process_for_close(self, proc_name: str) -> bool:
+        p = (proc_name or "").strip().lower()
+        if not p:
+            return True
+        if not p.endswith(".exe"):
+            p += ".exe"
+        protected = {
+            "wpfapp1.exe",
+            "python.exe",
+            "pythonw.exe",
+            "code.exe",
+            "code - insiders.exe",
+        }
+        return p in protected
+
+    def _tasklist_rows_for_pid(self, pid: int) -> list[list[str]]:
+        safe_pid = int(pid)
+        if safe_pid <= 0:
+            return []
+        try:
+            out = subprocess.check_output(
+                ["tasklist", "/FI", f"PID eq {safe_pid}", "/FO", "CSV", "/NH"],
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+            )
+        except Exception:
+            return []
+
+        txt = (out or "").strip()
+        if not txt:
+            return []
+        lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
+        if not lines:
+            return []
+        if lines[0].lower().startswith("info:"):
+            return []
+        try:
+            return [row for row in csv.reader(io.StringIO("\n".join(lines))) if row]
+        except Exception:
+            return []
+
+    def _process_name_by_pid(self, pid: int) -> str:
+        rows = self._tasklist_rows_for_pid(pid)
+        if not rows:
+            return ""
+        name = (rows[0][0] if rows[0] else "").strip().strip('"').lower()
+        if name and not name.endswith(".exe"):
+            name += ".exe"
+        return name
+
+    def _is_pid_alive(self, pid: int) -> bool:
+        return bool(self._tasklist_rows_for_pid(pid))
+
+    def _process_exec_and_cmdline(self, pid: int) -> tuple[str, str]:
+        safe_pid = int(pid)
+        if safe_pid <= 0:
+            return "", ""
+        ps = (
+            f"$p=Get-CimInstance Win32_Process -Filter \"ProcessId={safe_pid}\" -ErrorAction SilentlyContinue;"
+            "if($null -ne $p){"
+            "$e=$p.ExecutablePath;$c=$p.CommandLine;"
+            "if($null -eq $e){$e=''};if($null -eq $c){$c=''};"
+            "Write-Output ($e + '|||' + $c)"
+            "}"
+        )
+        try:
+            out = subprocess.check_output(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                timeout=0.45,
+            )
+        except Exception:
+            return "", ""
+        raw = (out or "").strip()
+        if not raw:
+            return "", ""
+        if "|||" not in raw:
+            return raw.strip(), ""
+        exe_path, cmdline = raw.split("|||", 1)
+        return exe_path.strip(), cmdline.strip()
+
+    def _capture_study_workspace_snapshot(self):
+        windows = self._enum_visible_real_windows()
+        active_hwnd = int(_USER32.GetForegroundWindow() or 0)
+        pid_name_cache: dict[int, str] = {}
+        pid_details_cache: dict[int, tuple[str, str]] = {}
+        snapshot: list[dict] = []
+        for win in windows:
+            pid = int(win.get("pid") or 0)
+            hwnd = int(win.get("hwnd") or 0)
+            if pid <= 0 or hwnd <= 0:
+                continue
+            if pid in self.study_safe_pids:
+                continue
+            if pid not in pid_name_cache:
+                pid_name_cache[pid] = self._process_name_by_pid(pid)
+            process_name = pid_name_cache.get(pid) or ""
+            if not process_name:
+                continue
+            # Snapshot only windows that study mode may actually close.
+            if process_name in self.study_allowed_processes:
+                continue
+            if process_name in self.study_browser_processes:
+                continue
+            if pid not in pid_details_cache:
+                pid_details_cache[pid] = self._process_exec_and_cmdline(pid)
+            exe_path, cmdline = pid_details_cache.get(pid, ("", ""))
+            snapshot.append(
+                {
+                    "hwnd": hwnd,
+                    "pid": pid,
+                    "title": (win.get("title") or "").strip(),
+                    "process": process_name,
+                    "exe_path": exe_path,
+                    "cmdline": cmdline,
+                    "was_active": (hwnd == active_hwnd),
+                }
+            )
+        active_entry = next((w for w in snapshot if w.get("was_active")), None)
+        with self._study_lock:
+            self.study_workspace_snapshot = snapshot
+            self.study_snapshot_active = active_entry
+        self._study_log(
+            f"workspace snapshot captured windows={len(snapshot)} active='{(active_entry or {}).get('title', '')}'"
+        )
+
+    def _restore_workspace_snapshot(self) -> bool:
+        with self._study_lock:
+            snapshot = list(self.study_workspace_snapshot)
+            closed_pids = set(self.study_closed_window_pids)
+        if not snapshot:
+            self._study_log("workspace restore skipped: no snapshot")
+            return False
+
+        candidates: list[dict] = []
+        seen: set[str] = set()
+        for item in snapshot:
+            pid = int(item.get("pid") or 0)
+            process_name = (item.get("process") or "").strip().lower()
+            exe_path = (item.get("exe_path") or "").strip()
+            cmdline = (item.get("cmdline") or "").strip()
+            if pid <= 0 or not process_name:
+                continue
+            if pid in self.study_safe_pids:
+                continue
+            if process_name in self.study_allowed_processes:
+                continue
+            if closed_pids and pid not in closed_pids:
+                continue
+            key = (exe_path or process_name).lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            candidates.append(
+                {
+                    "pid": pid,
+                    "process": process_name,
+                    "exe_path": exe_path,
+                    "cmdline": cmdline,
+                }
+            )
+
+        restored = 0
+        for item in candidates:
+            exe_path = item["exe_path"]
+            cmdline = item["cmdline"]
+            process_name = item["process"]
+            launched = False
+            if cmdline:
+                try:
+                    subprocess.Popen(
+                        cmdline,
+                        shell=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    launched = True
+                except Exception:
+                    launched = False
+            if (not launched) and exe_path:
+                try:
+                    subprocess.Popen(
+                        [exe_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    launched = True
+                except Exception:
+                    launched = False
+            if launched:
+                restored += 1
+                self._study_log(f"workspace restore launch process={process_name}")
+            else:
+                self._study_log(f"workspace restore failed process={process_name}")
+
+        self._study_log(f"workspace restore complete restored={restored} candidates={len(candidates)}")
+        return restored > 0
+
+    def _ask_restore_previous_workspace(self) -> bool:
+        ui_state("SPEAKING")
+        self.voice.play_or_tts("restore_workspace_prompt", "Restore previous workspace?")
+        self._deafen_after_speak()
+        ui_state("CONFIRM")
+        extra_yes = {
+            "restore",
+            "restore it",
+            "restore workspace",
+            "yes restore",
+            "bring it back",
+            "return back",
+        }
+        for attempt in range(2):
+            reply = self._listen_confirm_reply(extra_grammar_phrases=extra_yes)
+            decision = self._classify_confirm_reply(reply or "", extra_yes_phrases=extra_yes)
+            if decision == "yes":
+                return True
+            if decision == "no":
+                return False
+            if attempt == 0:
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("say_yes_no", "Please say yes or no.")
+                self._deafen_after_speak()
+                ui_state("CONFIRM")
+        return False
+
+    def _maybe_offer_restore_workspace(self, reason: str = "") -> bool:
+        with self._study_lock:
+            has_snapshot = bool(self.study_workspace_snapshot)
+            pending = bool(self.study_restore_prompt_pending)
+        if not has_snapshot:
+            with self._study_lock:
+                self.study_restore_prompt_pending = False
+                self.study_restore_prompt_reason = ""
+                self.study_workspace_snapshot = []
+                self.study_snapshot_active = None
+                self.study_closed_window_pids.clear()
+            return False
+        if not pending and not reason:
+            return False
+
+        why = reason or self.study_restore_prompt_reason or "study_end"
+        self._study_log(f"restore prompt reason={why}")
+        do_restore = self._ask_restore_previous_workspace()
+        if do_restore:
+            ui_state("EXECUTING")
+            restored = self._restore_workspace_snapshot()
+            ui_state("SPEAKING")
+            if restored:
+                self.voice.play_or_tts("workspace_restored", "Workspace restored.")
+            else:
+                self.voice.play_or_tts("workspace_restore_failed", "I couldn't restore previous apps.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+        else:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("workspace_restore_skip", "Okay.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+
+        with self._study_lock:
+            self.study_restore_prompt_pending = False
+            self.study_restore_prompt_reason = ""
+            self.study_workspace_snapshot = []
+            self.study_snapshot_active = None
+            self.study_closed_window_pids.clear()
+        return do_restore
+
+    def _listen_study_confirm_reply(self, extra_grammar_phrases: set[str] | None = None) -> str | None:
+        grammar = set(CONFIRM_GRAMMAR_PHRASES)
+        for phrase in (extra_grammar_phrases or set()):
+            p = " ".join(str(phrase or "").strip().lower().split())
+            if p:
+                grammar.add(p)
+        reply = self.listen_command_vosk(
+            max_seconds=1.8,
+            min_listen_ms=120,
+            ui_state_label="CONFIRM",
+            use_grammar=True,
+            speak_on_empty=False,
+            grammar_phrases=sorted(grammar),
+        )
+        if reply:
+            return reply
+        return self.listen_command_vosk(
+            max_seconds=1.2,
+            min_listen_ms=100,
+            ui_state_label="CONFIRM",
+            use_grammar=False,
+            speak_on_empty=False,
+        )
+
+    def _speak_study_confirm_prompt(self):
+        ui_state("SPEAKING")
+        spoken = False
+        try:
+            spoken = bool(self.voice.play_key("study_confirm"))
+        except Exception:
+            spoken = False
+        if not spoken:
+            try:
+                spoken = bool(self.voice.play_key("are_you_sure_old", max_ms=900))
+            except Exception:
+                spoken = False
+        if not spoken:
+            try:
+                spoken = bool(self.voice.play_key("are_you_sure_01"))
+            except Exception:
+                spoken = False
+        if not spoken:
+            self.voice.play_or_tts("study_confirm", "Are you sure?")
+        self._deafen_after_speak(40)
+        ui_state("CONFIRM")
+        self._cmd_log("study confirm expected")
+
+    def _enum_visible_real_windows(self) -> list[dict]:
+        windows: list[dict] = []
+        enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        pid_box = ctypes.c_ulong(0)
+
+        def _cb(hwnd, _lparam):
+            try:
+                if not _USER32.IsWindowVisible(hwnd):
+                    return True
+                title_len = _USER32.GetWindowTextLengthW(hwnd)
+                if title_len <= 0:
+                    return True
+                title_buf = ctypes.create_unicode_buffer(title_len + 1)
+                _USER32.GetWindowTextW(hwnd, title_buf, title_len + 1)
+                title = (title_buf.value or "").strip()
+                if not title:
+                    return True
+                ex_style = _USER32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                if int(ex_style) & WS_EX_TOOLWINDOW:
+                    return True
+                cls_buf = ctypes.create_unicode_buffer(128)
+                _USER32.GetClassNameW(hwnd, cls_buf, len(cls_buf))
+                class_name = (cls_buf.value or "").strip()
+                pid_box.value = 0
+                _USER32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_box))
+                pid = int(pid_box.value)
+                if pid <= 0:
+                    return True
+                windows.append({"hwnd": int(hwnd), "pid": pid, "title": title, "class_name": class_name})
+            except Exception:
+                return True
+            return True
+
+        try:
+            _USER32.EnumWindows(enum_proc(_cb), 0)
+        except Exception:
+            return []
+        return windows
+
+    def _send_wm_close(self, hwnd: int, timeout_ms: int = 180) -> bool:
+        try:
+            # PostMessage is non-blocking and keeps the assistant responsive.
+            if _USER32.PostMessageW(wintypes.HWND(int(hwnd)), WM_CLOSE, 0, 0):
+                return True
+            result = ctypes.c_size_t(0)
+            ok = _USER32.SendMessageTimeoutW(
+                wintypes.HWND(int(hwnd)),
+                WM_CLOSE,
+                0,
+                0,
+                SMTO_ABORTIFHUNG,
+                int(max(250, timeout_ms)),
+                ctypes.byref(result),
+            )
+            return bool(ok)
+        except Exception:
+            return False
+
+    def _show_window(self, hwnd: int, cmd: int) -> bool:
+        try:
+            return bool(_USER32.ShowWindow(wintypes.HWND(int(hwnd)), int(cmd)))
+        except Exception:
+            return False
+
+    def _set_foreground(self, hwnd: int) -> bool:
+        try:
+            return bool(_USER32.SetForegroundWindow(wintypes.HWND(int(hwnd))))
+        except Exception:
+            return False
+
+    def _browser_windows(self) -> list[dict]:
+        windows = self._enum_visible_real_windows()
+        if not windows:
+            return []
+        pid_cache: dict[int, str] = {}
+        out: list[dict] = []
+        for win in windows:
+            pid = int(win.get("pid") or 0)
+            if pid <= 0:
+                continue
+            if pid not in pid_cache:
+                pid_cache[pid] = self._process_name_by_pid(pid)
+            proc = pid_cache.get(pid) or ""
+            if proc in self.study_browser_processes:
+                out.append({**win, "process": proc})
+        return out
+
+    def _minimize_browser_windows(self) -> int:
+        minimized = 0
+        for win in self._browser_windows():
+            hwnd = int(win["hwnd"])
+            try:
+                _USER32.ShowWindow(wintypes.HWND(hwnd), SW_MINIMIZE)
+                minimized += 1
+            except Exception:
+                continue
+        self._study_log(f"minimized browser windows={minimized}")
+        return minimized
+
+    def _restore_foreground_browser_window(self) -> bool:
+        windows = self._browser_windows()
+        if not windows:
+            self._study_log("browser foreground restore skipped: no visible browser windows")
+            return False
+        for win in reversed(windows):
+            hwnd = int(win["hwnd"])
+            try:
+                _USER32.ShowWindow(wintypes.HWND(hwnd), SW_RESTORE)
+                if _USER32.SetForegroundWindow(wintypes.HWND(hwnd)):
+                    self._study_log(f"browser window restored hwnd={hwnd} pid={win['pid']}")
+                    return True
+            except Exception:
+                continue
+        self._study_log("browser foreground restore failed")
+        return False
+
+    def _close_study_launched_browsers(self):
+        with self._study_lock:
+            pids = set(self.study_launched_browser_pids)
+            self.study_launched_browser_pids.clear()
+        if not pids:
+            return
+
+        windows = self._enum_visible_real_windows()
+        for win in windows:
+            pid = int(win.get("pid") or 0)
+            if pid in pids:
+                self._send_wm_close(int(win.get("hwnd") or 0), timeout_ms=120)
+        time.sleep(0.35)
+
+        killed = 0
+        for pid in sorted(pids):
+            if not self._is_pid_alive(pid):
+                continue
+            try:
+                res = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if res.returncode == 0:
+                    killed += 1
+            except Exception:
+                continue
+        self._study_log(f"study browsers closed pids={len(pids)} killed={killed}")
+
+    def _soft_close_study_windows(self):
+        self.study_closed_window_pids.clear()
+        windows = self._enum_visible_real_windows()
+        pid_cache: dict[int, str] = {}
+        close_count = 0
+        skipped = 0
+        for win in windows:
+            hwnd = int(win["hwnd"])
+            pid = int(win["pid"])
+            title = win.get("title") or ""
+            class_name = (win.get("class_name") or "").strip()
+            if pid in self.study_safe_pids:
+                skipped += 1
+                continue
+            if pid not in pid_cache:
+                pid_cache[pid] = self._process_name_by_pid(pid)
+            process_name = pid_cache.get(pid) or ""
+            if not process_name:
+                self._study_log(f"skip hwnd={hwnd} pid={pid} title='{title}' reason=unknown_process")
+                skipped += 1
+                continue
+            # Close folder windows while keeping explorer process alive.
+            if process_name == "explorer.exe" and class_name in {"CabinetWClass", "ExploreWClass"}:
+                sent = self._send_wm_close(hwnd, timeout_ms=180)
+                close_count += 1
+                self._study_log(
+                    f"wm_close folder hwnd={hwnd} pid={pid} process={process_name} sent={'yes' if sent else 'no'} title='{title}'"
+                )
+                continue
+            if process_name in self.study_allowed_processes:
+                skipped += 1
+                continue
+            if process_name in self.study_browser_processes:
+                skipped += 1
+                continue
+            sent = self._send_wm_close(hwnd, timeout_ms=180)
+            self.study_closed_window_pids.add(pid)
+            close_count += 1
+            self._study_log(
+                f"wm_close hwnd={hwnd} pid={pid} process={process_name} sent={'yes' if sent else 'no'} title='{title}'"
+            )
+        self._study_log(
+            f"window sweep done total={len(windows)} soft_close={close_count} skipped={skipped}"
+        )
+
+    def _hard_kill_lingering_study_processes(self):
+        kill_count = 0
+        for pid in sorted(self.study_closed_window_pids):
+            if pid in self.study_safe_pids:
+                continue
+            if not self._is_pid_alive(pid):
+                continue
+            process_name = self._process_name_by_pid(pid)
+            if not process_name:
+                continue
+            if process_name in self.study_allowed_processes:
+                continue
+            try:
+                res = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if res.returncode == 0:
+                    kill_count += 1
+                    self._study_log(f"taskkill pid={pid} process={process_name}")
+                else:
+                    self._study_log(f"taskkill_failed pid={pid} process={process_name} rc={res.returncode}")
+            except Exception as e:
+                self._study_log(f"taskkill_exception pid={pid} process={process_name} error={e}")
+        self._study_log(f"hard-kill pass completed kills={kill_count}")
+
+    def _tasklist_process_names(self) -> set[str]:
+        try:
+            res = subprocess.run(
+                ["tasklist", "/NH", "/FO", "CSV"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                check=False,
+            )
+        except Exception as e:
+            self._study_log(f"DistractGuard tasklist exception: {e}")
+            return set()
+
+        if int(getattr(res, "returncode", 1)) != 0:
+            self._study_log(f"DistractGuard tasklist failed rc={res.returncode}")
+            return set()
+
+        names: set[str] = set()
+        try:
+            for row in csv.reader(io.StringIO(res.stdout or "")):
+                if not row:
+                    continue
+                name = (row[0] or "").strip().strip('"').lower()
+                if not name or name.startswith("info:"):
+                    continue
+                if not name.endswith(".exe"):
+                    name += ".exe"
+                names.add(name)
+        except Exception as e:
+            self._study_log(f"DistractGuard csv parse failed: {e}")
+        return names
+
+    def _announce_distract_blocked(self, proc_name: str):
+        proc = (proc_name or "").strip().lower()
+        if not proc:
+            return
+        now = time.time()
+        with self._study_lock:
+            last_ts = float(self.distract_guard_last_announce_ts.get(proc, 0.0))
+            if (now - last_ts) < float(DISTRACT_BLOCK_ANNOUNCE_COOLDOWN_SEC):
+                return
+            self.distract_guard_last_announce_ts[proc] = now
+        if bool(getattr(self.voice, "muted", False)):
+            return
+        try:
+            # Prefer local clip for the fastest start; fallback to TTS only if clip is missing.
+            played = bool(self.voice.play_key("distract_guard_closed"))
+            if not played:
+                self.voice.play_or_tts("distract_guard_closed", "Closed by distract guard.")
+            self._deafen_after_speak(40)
+        except Exception:
+            pass
+
+    def close_process_soft_then_hard(self, proc_name: str) -> bool:
+        target = " ".join((proc_name or "").strip().lower().split())
+        if not target:
+            return False
+        if not target.endswith(".exe"):
+            target += ".exe"
+        if target not in self.study_distract_processes:
+            return False
+
+        pid_name_cache: dict[int, str] = {}
+        sent_count = 0
+        windows = self._enum_visible_real_windows()
+        for win in windows:
+            pid = int(win.get("pid") or 0)
+            hwnd = int(win.get("hwnd") or 0)
+            if pid <= 0 or hwnd <= 0:
+                continue
+            if pid not in pid_name_cache:
+                pid_name_cache[pid] = self._process_name_by_pid(pid)
+            process_name = pid_name_cache.get(pid) or ""
+            if process_name != target:
+                continue
+            if self._send_wm_close(hwnd, timeout_ms=180):
+                sent_count += 1
+
+        self._study_log(f"DistractGuard {target}: WM_CLOSE sent to {sent_count} windows")
+        if sent_count > 0:
+            time.sleep(DISTRACT_SOFT_CLOSE_WAIT_SEC)
+
+        remaining = self._tasklist_process_names()
+        if target not in remaining:
+            return sent_count > 0
+
+        try:
+            res = subprocess.run(
+                ["taskkill", "/IM", target, "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            self._study_log(f"DistractGuard {target}: taskkill result code {res.returncode}")
+            if int(getattr(res, "returncode", 1)) == 0:
+                return True
+        except Exception as e:
+            self._study_log(f"DistractGuard {target}: taskkill exception {e}")
+
+        return False
+
+    def distract_guard_loop(self):
+        self._study_log("DistractGuard started")
+        try:
+            while True:
+                if self.distract_guard_stop_event.is_set():
+                    break
+                with self._study_lock:
+                    enabled = bool(self.distract_guard_enabled)
+                    active = bool(self.study_mode_active)
+                if (not enabled) or (not active):
+                    break
+
+                running = self._tasklist_process_names()
+                if not running:
+                    continue
+
+                hits = sorted(set(self.study_distract_processes) & running)
+                for proc in hits:
+                    self._study_log(f"Detected distract process: {proc}")
+                    if self.close_process_soft_then_hard(proc):
+                        self._announce_distract_blocked(proc)
+                if self.distract_guard_stop_event.wait(float(DISTRACT_GUARD_INTERVAL_SEC)):
+                    break
+        finally:
+            with self._study_lock:
+                self.distract_guard_enabled = False
+            self._study_log("DistractGuard stopped")
+
+    def start_distract_guard(self):
+        with self._study_lock:
+            if self.distract_guard_enabled:
+                return False
+            self.distract_guard_enabled = True
+            self.distract_guard_stop_event.clear()
+            guard_thread = threading.Thread(target=self.distract_guard_loop, daemon=True)
+            self.distract_guard_thread = guard_thread
+        guard_thread.start()
+        return True
+
+    def stop_distract_guard(self):
+        with self._study_lock:
+            guard_thread = self.distract_guard_thread
+            self.distract_guard_enabled = False
+            self.distract_guard_stop_event.set()
+            self.distract_guard_thread = None
+        if (
+            guard_thread
+            and guard_thread.is_alive()
+            and (guard_thread is not threading.current_thread())
+        ):
+            guard_thread.join(timeout=1.4)
+        self._study_log("DistractGuard stop requested")
+        return True
+
+    def _open_with_start(self, target: str) -> bool:
+        try:
+            subprocess.Popen(
+                ["cmd.exe", "/C", "start", "", target],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self._study_log(f"opened target={target}")
+            return True
+        except Exception as e:
+            self._study_log(f"open failed target={target} error={e}")
+            return False
+
+    def _run_powershell_capture(self, ps_command: str) -> str:
+        try:
+            out = subprocess.check_output(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_command],
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+            )
+            return (out or "").strip()
+        except Exception:
+            return ""
+
+    def _get_notifications_enabled(self) -> int | None:
+        ps = (
+            "$v=(Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications' "
+            "-Name ToastEnabled -ErrorAction SilentlyContinue).ToastEnabled;"
+            "if($null -eq $v){'1'} else {[string]$v}"
+        )
+        raw = self._run_powershell_capture(ps)
+        if raw == "":
+            return None
+        try:
+            return 1 if int(raw) != 0 else 0
+        except Exception:
+            return None
+
+    def _set_notifications_enabled(self, enabled: bool) -> bool:
+        value = "1" if enabled else "0"
+        ps = (
+            "New-Item -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications' -Force | Out-Null;"
+            f"Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications' -Name ToastEnabled -Type DWord -Value {value} -Force"
+        )
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            return True
+        except Exception:
+            return False
+
+    def _disable_notifications_for_study(self):
+        current = self._get_notifications_enabled()
+        with self._study_lock:
+            if self.study_notifications_prev_enabled is None:
+                self.study_notifications_prev_enabled = current
+        ok = self._set_notifications_enabled(False)
+        self._study_log(
+            f"notifications disabled={'yes' if ok else 'no'} previous={current if current is not None else 'unknown'}"
+        )
+
+    def _restore_notifications_after_study(self):
+        with self._study_lock:
+            prev = self.study_notifications_prev_enabled
+            self.study_notifications_prev_enabled = None
+        target_enabled = True if prev is None else bool(prev)
+        ok = self._set_notifications_enabled(target_enabled)
+        self._study_log(
+            f"notifications restored={'yes' if ok else 'no'} target={'on' if target_enabled else 'off'}"
+        )
+
+    def _open_learning_browser_window(self) -> bool:
+        urls = list(STUDY_OPEN_URLS)
+        ts = int(time.time())
+        tmp_root = os.path.join(os.environ.get("TEMP", os.getcwd()), "AidyStudyBrowser")
+        try:
+            os.makedirs(tmp_root, exist_ok=True)
+        except Exception:
+            pass
+
+        opera_gx_candidates = [
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera GX\opera.exe"),
+            os.path.expandvars(r"%PROGRAMFILES%\Opera GX\opera.exe"),
+            os.path.expandvars(r"%PROGRAMFILES(X86)%\Opera GX\opera.exe"),
+        ]
+        for exe in opera_gx_candidates:
+            if not exe or not os.path.exists(exe):
+                continue
+            profile_dir = os.path.join(tmp_root, f"opera_gx_{ts}")
+            try:
+                proc = subprocess.Popen(
+                    [exe, f"--user-data-dir={profile_dir}", "--new-window", *urls],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+                if int(getattr(proc, "pid", 0) or 0) > 0:
+                    with self._study_lock:
+                        self.study_launched_browser_pids.add(int(proc.pid))
+                self._study_log(f"opened learning browser via opera_gx profile={profile_dir}")
+                return True
+            except Exception:
+                continue
+
+        browser_variants: list[tuple[list[str], str]] = [
+            (["msedge", f"--user-data-dir={os.path.join(tmp_root, f'edge_{ts}')}", "--new-window", *urls], "edge"),
+            (["chrome", f"--user-data-dir={os.path.join(tmp_root, f'chrome_{ts}')}", "--new-window", *urls], "chrome"),
+            (["brave", f"--user-data-dir={os.path.join(tmp_root, f'brave_{ts}')}", "--new-window", *urls], "brave"),
+            (["opera", f"--user-data-dir={os.path.join(tmp_root, f'opera_{ts}')}", "--new-window", *urls], "opera"),
+            (["firefox", "-new-instance", "-profile", os.path.join(tmp_root, f"firefox_{ts}"), "-new-window", *urls], "firefox"),
+        ]
+        for cmd, label in browser_variants:
+            try:
+                if label == "firefox":
+                    os.makedirs(cmd[3], exist_ok=True)
+                else:
+                    for arg in cmd:
+                        if arg.startswith("--user-data-dir="):
+                            os.makedirs(arg.split("=", 1)[1], exist_ok=True)
+                            break
+            except Exception:
+                pass
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+                if int(getattr(proc, "pid", 0) or 0) > 0:
+                    with self._study_lock:
+                        self.study_launched_browser_pids.add(int(proc.pid))
+                self._study_log(f"opened learning browser via {label} separate-instance")
+                return True
+            except Exception:
+                continue
+
+        self._study_log("failed to open separate learning browser instance; shell fallback skipped")
+        return False
+
+    def _open_study_targets(self):
+        self._open_learning_browser_window()
+
+    def _study_setup_worker(self):
+        self._study_log("study setup worker started")
+        try:
+            self._capture_study_workspace_snapshot()
+            if not self.study_mode_active or self.study_abort_flag:
+                self._study_log("study setup aborted before opening targets")
+                return
+            self._soft_close_study_windows()
+            time.sleep(0.25)
+            self._hard_kill_lingering_study_processes()
+            if not self.study_mode_active or self.study_abort_flag:
+                self._study_log("study setup aborted before opening targets")
+                return
+            try:
+                show_desktop()
+            except Exception:
+                pass
+            self._open_study_targets()
+            self._disable_notifications_for_study()
+            self._study_log("study setup worker completed")
+        except Exception as e:
+            self._study_log(f"study setup worker error={e}")
+
+    def _announce_study_finished(self):
+        ui_state("SPEAKING")
+        played = False
+        try:
+            played = bool(self.voice.play_key("study_finished"))
+        except Exception:
+            played = False
+        if not played:
+            try:
+                played = bool(self.voice.tts_blocking("Forty five minutes are over."))
+            except Exception:
+                played = False
+        if played:
+            self._deafen_after_speak()
+        ui_state("IDLE")
+
+    def _study_timer_worker(self, expected_end_ts: float):
+        self._study_log("timer thread started")
+        try:
+            while True:
+                with self._study_lock:
+                    active = bool(self.study_mode_active)
+                    aborted = bool(self.study_abort_flag)
+                    end_ts = self.study_timer_end_ts
+                    total = int(self.study_timer_total_seconds or 0)
+                    last_sent = int(self.study_timer_last_second_sent or 0)
+                remaining = int(max(0, float(expected_end_ts) - time.time() + 0.999))
+                if total > 0 and remaining != last_sent:
+                    self.study_timer_last_second_sent = remaining
+                    self._emit_timer_ui("tick", remaining, total)
+                if not active:
+                    self._study_log("timer thread exit: study mode inactive")
+                    return
+                if aborted:
+                    self._study_log("timer thread exit: abort flag set")
+                    return
+                if end_ts is None or abs(float(end_ts) - float(expected_end_ts)) > 0.001:
+                    self._study_log("timer thread exit: timer replaced")
+                    return
+                if time.time() >= expected_end_ts:
+                    break
+                time.sleep(0.35)
+
+            with self._study_lock:
+                if (not self.study_mode_active) or self.study_abort_flag:
+                    self._study_log("timer completion ignored: mode inactive or aborted")
+                    return
+                total = int(self.study_timer_total_seconds or 0)
+                self.study_timer_end_ts = None
+                self.study_timer_total_seconds = 0
+                self.study_timer_last_second_sent = -1
+                self.study_mode_active = False
+                self.study_abort_flag = False
+                self.study_restore_prompt_pending = bool(self.study_workspace_snapshot)
+                self.study_restore_prompt_reason = "timer_finished"
+            self._study_log("45-minute timer finished")
+            self.stop_distract_guard()
+            ui_study_mode(False)
+            self._close_study_launched_browsers()
+            self._emit_timer_ui("done", 0, total)
+            self._restore_notifications_after_study()
+            self._announce_study_finished()
+        except Exception as e:
+            self._study_log(f"timer thread error={e}")
+
+    def _start_study_timer(self, seconds: int) -> bool:
+        safe_seconds = max(1, int(seconds))
+        end_ts = time.time() + safe_seconds
+        with self._study_lock:
+            self.study_abort_flag = False
+            self.study_timer_end_ts = end_ts
+            self.study_timer_total_seconds = safe_seconds
+            self.study_timer_last_second_sent = -1
+            timer_thread = threading.Thread(
+                target=self._study_timer_worker,
+                args=(end_ts,),
+                daemon=True,
+            )
+            self._study_timer_thread = timer_thread
+        self._emit_timer_ui("start", safe_seconds, safe_seconds)
+        self._study_log(f"TIMER:start seconds={safe_seconds} end_ts={int(end_ts)}")
+        timer_thread.start()
+        return True
+
+    def _update_study_timer_watchdog(self):
+        with self._study_lock:
+            active = bool(self.study_mode_active)
+            aborted = bool(self.study_abort_flag)
+            end_ts = self.study_timer_end_ts
+            total = int(self.study_timer_total_seconds or 0)
+            last_sent = int(self.study_timer_last_second_sent or -1)
+        if not active or aborted or end_ts is None:
+            return
+
+        remaining = int(max(0, float(end_ts) - time.time() + 0.999))
+        if total > 0 and remaining != last_sent:
+            self.study_timer_last_second_sent = remaining
+            self._emit_timer_ui("tick", remaining, total)
+        if remaining > 0:
+            return
+
+        with self._study_lock:
+            if (not self.study_mode_active) or self.study_abort_flag or self.study_timer_end_ts is None:
+                return
+            total_done = int(self.study_timer_total_seconds or 0)
+            self.study_timer_end_ts = None
+            self.study_timer_total_seconds = 0
+            self.study_timer_last_second_sent = -1
+            self.study_mode_active = False
+            self.study_abort_flag = False
+            self.study_restore_prompt_pending = bool(self.study_workspace_snapshot)
+            self.study_restore_prompt_reason = "timer_finished"
+        self._study_log("45-minute timer finished (watchdog)")
+        self.stop_distract_guard()
+        ui_study_mode(False)
+        self._close_study_launched_browsers()
+        self._emit_timer_ui("done", 0, total_done)
+        self._restore_notifications_after_study()
+        self._announce_study_finished()
+
+    def _study_time_left_seconds(self) -> int:
+        with self._study_lock:
+            end_ts = self.study_timer_end_ts
+            active = self.study_mode_active
+        if not active or end_ts is None:
+            return 0
+        return int(max(0, float(end_ts) - time.time()))
+
+    def _speak_study_mode_status(self) -> bool:
+        if not self.study_mode_active:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("study_mode_status", "Study mode is not active.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+        remaining = self._study_time_left_seconds()
+        if self.study_timer_end_ts is None:
+            msg = "Study mode is active. Timer already finished."
+        else:
+            mins, secs = divmod(remaining, 60)
+            if mins > 0 and secs > 0:
+                msg = f"Study mode is active. {mins} minutes {secs} seconds left."
+            elif mins > 0:
+                msg = f"Study mode is active. {mins} minutes left."
+            else:
+                msg = f"Study mode is active. {secs} seconds left."
+        ui_state("SPEAKING")
+        self.voice.play_or_tts("study_mode_status", msg)
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        return True
+
+    def _stop_study_mode(self, announce: bool = True, prompt_restore_now: bool = False) -> bool:
+        with self._study_lock:
+            if not self.study_mode_active:
+                if announce:
+                    ui_state("SPEAKING")
+                    self.voice.play_or_tts("study_mode_not_active", "Study mode is not active.")
+                    self._deafen_after_speak()
+                    ui_state("IDLE")
+                return False
+            self.study_abort_flag = True
+            self.study_mode_active = False
+            remaining = int(max(0, self.study_timer_end_ts - time.time() + 0.999)) if self.study_timer_end_ts else 0
+            total = int(self.study_timer_total_seconds or 0)
+            self.study_timer_end_ts = None
+            self.study_timer_total_seconds = 0
+            self.study_timer_last_second_sent = -1
+            self.study_restore_prompt_pending = bool(self.study_workspace_snapshot)
+            self.study_restore_prompt_reason = "manual_stop"
+        self._study_log("study mode stopped")
+        self.stop_distract_guard()
+        ui_study_mode(False)
+        self._close_study_launched_browsers()
+        if total > 0:
+            self._emit_timer_ui("stop", remaining, total)
+        self._restore_notifications_after_study()
+        if announce:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("study_mode_stopped", "Stopped.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+        if prompt_restore_now:
+            self._maybe_offer_restore_workspace(reason="manual_stop")
+        return True
+
+    def _start_study_mode(self) -> bool:
+        with self._study_lock:
+            if self.study_mode_active:
+                ui_state("SPEAKING")
+                self.voice.play_or_tts("study_mode_already", "Already in study mode.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            self.study_mode_active = True
+            self.study_abort_flag = False
+            self.study_timer_end_ts = None
+            self.study_closed_window_pids.clear()
+            self.study_workspace_snapshot = []
+            self.study_snapshot_active = None
+            self.study_restore_prompt_pending = False
+            self.study_restore_prompt_reason = ""
+            self.study_actions_log = []
+            self.study_notifications_prev_enabled = None
+            self.study_launched_browser_pids.clear()
+            self.distract_guard_last_announce_ts.clear()
+        self._study_log("study mode start requested")
+
+        # Start timer first so study session is always armed even if later setup steps fail.
+        timer_started = self._start_study_timer(STUDY_SESSION_SECONDS)
+        self.start_distract_guard()
+        ui_study_mode(True)
+
+        setup_thread = threading.Thread(target=self._study_setup_worker, daemon=True)
+        self._study_setup_thread = setup_thread
+        setup_thread.start()
+
+        ui_state("SPEAKING")
+        self.voice.play_or_tts(
+            "study_mode_started",
+            ("Study mode started. Forty five minute timer is running." if timer_started
+             else "Study mode started. Timer fallback is armed."),
+        )
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        return True
+
+    def _study_start_requires_confirmation(self, text: str) -> bool:
+        t = " ".join((text or "").strip().lower().split())
+        if not t:
+            return False
+        if t in STUDY_MODE_DIRECT_START_PHRASES:
+            return False
+        if t in STUDY_MODE_CONFIRM_START_PHRASES:
+            return True
+        tokens = set(t.split())
+        study_tokens = {"study", "stady", "studi", "stadi"}
+        mode_tokens = {"mode", "mood", "mod"}
+        if tokens & study_tokens:
+            if tokens & mode_tokens:
+                return False
+            return True
+        return False
+
+    def _confirm_study_mode_request(self, heard_text: str) -> bool:
+        self._study_log(f"study confirmation required for '{heard_text}'")
+        self._speak_study_confirm_prompt()
+        extra_yes = {
+            "yes",
+            "do it",
+            "start study mode",
+            "study mode",
+            "start study",
+            "start",
+            "да",
+            "da",
+        }
+        for attempt in range(1):
+            reply = self._listen_study_confirm_reply(extra_grammar_phrases=extra_yes)
+            decision = self._classify_confirm_reply(reply or "", extra_yes_phrases=extra_yes)
+            if decision == "yes":
+                self._study_log("study confirmation accepted")
+                return True
+            if decision == "no":
+                self._study_log("study confirmation declined")
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            self._study_log("study confirmation unresolved")
+        self._study_log("study confirmation unresolved -> cancelled")
+        ui_state("WARNING")
+        self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        return False
+
+    def _confirm_study_stop_request(self, heard_text: str) -> bool:
+        self._study_log(f"study stop confirmation required for '{heard_text}'")
+        self._speak_confirm_prompt()
+        extra_yes = {
+            "yes",
+            "yeah",
+            "yep",
+            "confirm",
+            "да",
+            "da",
+        }
+        for _ in range(1):
+            reply = self._listen_confirm_reply(extra_grammar_phrases=extra_yes)
+            decision = self._classify_confirm_reply(reply or "", extra_yes_phrases=extra_yes)
+            if decision == "yes":
+                self._study_log("study stop confirmation accepted")
+                return True
+            if decision == "no":
+                self._study_log("study stop confirmation declined")
+                ui_state("WARNING")
+                self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+        self._study_log("study stop confirmation unresolved -> cancelled")
+        ui_state("WARNING")
+        self.voice.play_or_tts("confirm_cancelled", "Cancelled.")
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        return False
+
+    def _study_intent_from_text(self, text: str) -> str | None:
+        t = " ".join((text or "").strip().lower().split())
+        if not t:
+            return None
+        if t in STUDY_MODE_STOP_PHRASES:
+            return INTENT_STUDY_MODE_STOP
+        if t in STUDY_MODE_STATUS_PHRASES:
+            return INTENT_STUDY_MODE_STATUS
+        if t in STUDY_MODE_START_PHRASES or t in STUDY_MODE_START_ALIASES:
+            return INTENT_STUDY_MODE_START
+        tokens = set(t.split())
+        if tokens & {"study", "stady", "studi", "stadi"}:
+            return INTENT_STUDY_MODE_START
+        return None
 
     def _play_wake_ack(self):
         if bool(getattr(self.voice, "muted", False)):
@@ -478,11 +1744,12 @@ class Aidy:
             warn(f"Failed to load Vosk model: {e}")
             self.model = None
 
-        self.command_phrases = load_command_phrases(self.base_dir)
-        self.command_phrases = sorted(
-            set(self.command_phrases)
-            | set(WAKE_KEYWORDS)
-            | set(CONFIRM_GRAMMAR_PHRASES)
+        loaded_phrases = set(load_command_phrases(self.base_dir))
+        legacy_accuracy_env = os.environ.get("AIDY_LEGACY_ACCURACY", "1").strip().lower()
+        self.legacy_accuracy_mode = legacy_accuracy_env not in {"0", "false", "off", "no"}
+
+        common_phrases = (
+            set(CONFIRM_GRAMMAR_PHRASES)
             | set(WINDOW_SWITCH_GRAMMAR)
             | set(REPEAT_PHRASES)
             | set(CLOSE_ACTIVE_PHRASES)
@@ -495,6 +1762,21 @@ class Aidy:
             | set(LESS_ACTION_PHRASES)
             | set(TIMER_START_PHRASES)
             | set(TIMER_CANCEL_PHRASES)
+            | set(STUDY_MODE_STOP_PHRASES)
+            | set(STUDY_MODE_STATUS_PHRASES)
+        )
+
+        if self.legacy_accuracy_mode:
+            # Accuracy-first grammar: keep command grammar focused and avoid noisy wake/study aliases.
+            study_grammar = set(STUDY_MODE_DIRECT_START_PHRASES)
+        else:
+            # Wider grammar coverage for mixed/noisy phrases.
+            study_grammar = set(STUDY_MODE_START_PHRASES) | set(STUDY_MODE_START_ALIASES)
+
+        self.command_phrases = sorted(loaded_phrases | common_phrases | study_grammar)
+        self._cmd_log(
+            f"accuracy_profile={'legacy' if self.legacy_accuracy_mode else 'wide'} "
+            f"grammar_phrases={len(self.command_phrases)}"
         )
         self._wake_prefixes = sorted(
             {self._normalize_wake_text(w) for w in WAKE_KEYWORDS if self._normalize_wake_text(w)},
@@ -544,6 +1826,38 @@ class Aidy:
         self.timer_total_seconds = 0
         self.timer_end_at = 0.0
         self.timer_last_second_sent = -1
+        self.study_mode_active = False
+        self.study_timer_end_ts: float | None = None
+        self.study_abort_flag = False
+        self.study_allowed_processes = self._study_default_allowed_processes()
+        self.study_safe_pids: set[int] = {os.getpid()}
+        if os.getppid() > 0:
+            self.study_safe_pids.add(os.getppid())
+        self.study_browser_processes = {
+            "chrome.exe",
+            "msedge.exe",
+            "firefox.exe",
+            "opera.exe",
+            "brave.exe",
+        }
+        self.study_closed_window_pids: set[int] = set()
+        self.study_notifications_prev_enabled: int | None = None
+        self.study_workspace_snapshot: list[dict] = []
+        self.study_snapshot_active: dict | None = None
+        self.study_restore_prompt_pending = False
+        self.study_restore_prompt_reason = ""
+        self.study_launched_browser_pids: set[int] = set()
+        self.study_timer_total_seconds = 0
+        self.study_timer_last_second_sent = -1
+        self.study_actions_log: list[str] = []
+        self.study_distract_processes: set[str] = set(DISTRACT_PROCESSES)
+        self.distract_guard_enabled = False
+        self.distract_guard_stop_event = threading.Event()
+        self.distract_guard_thread: threading.Thread | None = None
+        self.distract_guard_last_announce_ts: dict[str, float] = {}
+        self._study_lock = threading.Lock()
+        self._study_timer_thread: threading.Thread | None = None
+        self._study_setup_thread: threading.Thread | None = None
         self._deafen_until = 0.0
 
     def start_stream(self):
@@ -684,6 +1998,9 @@ class Aidy:
         last_greeting_partial = ""
 
         while True:
+            with self._study_lock:
+                if self.study_restore_prompt_pending:
+                    return "__STUDY_RESTORE_PROMPT__"
             if self.stream:
                 data = self.stream.read(wake_chunk, exception_on_overflow=False)
             else:
@@ -840,7 +2157,8 @@ class Aidy:
         if ui_state_label == "CONFIRM":
             silence_stop_ms = min(VAD_SILENCE_MS, 380)
         elif ui_state_label == "COMMAND_LISTENING":
-            silence_stop_ms = min(VAD_SILENCE_MS, 320)
+            silence_cap = 520 if getattr(self, "legacy_accuracy_mode", True) else 320
+            silence_stop_ms = min(VAD_SILENCE_MS, silence_cap)
         elif ui_state_label == "FOLLOWUP":
             silence_stop_ms = min(VAD_SILENCE_MS, 420)
         else:
@@ -962,18 +2280,24 @@ class Aidy:
     def _listen_post_wake_command(self, max_attempts: int = 2) -> str | None:
         non_action_hits = 0
         for attempt in range(max(1, int(max_attempts))):
-            cmd_text = self.listen_command_smart(
+            cmd_text = self.listen_command_vosk(
                 max_seconds=(4 if attempt == 0 else 3),
-                min_listen_ms=(360 if attempt == 0 else 260),
+                min_listen_ms=(420 if attempt == 0 else 320),
                 ui_state_label="COMMAND_LISTENING",
+                use_grammar=True,
+                speak_on_empty=False,
             )
             if not cmd_text:
+                self._cmd_log("post-wake grammar empty -> retry free-form")
+                cmd_text = self.listen_command_vosk(
+                    max_seconds=(3 if attempt == 0 else 2),
+                    min_listen_ms=(320 if attempt == 0 else 260),
+                    ui_state_label="COMMAND_LISTENING",
+                    use_grammar=False,
+                    speak_on_empty=False,
+                )
+            if not cmd_text:
                 return None
-            norm = self._normalize_wake_text(cmd_text)
-            if norm in {"up", "down"}:
-                expanded = f"volume {norm}"
-                self._cmd_log(f"post-wake expand '{cmd_text}' -> '{expanded}'")
-                return expanded
             if not self._is_non_action_utterance(cmd_text):
                 return cmd_text
             non_action_hits += 1
@@ -1267,6 +2591,10 @@ class Aidy:
         if not t0:
             return None, {}
 
+        study_intent = self._study_intent_from_text(t0)
+        if study_intent:
+            return study_intent, {}
+
         if t0 in COMMANDS:
             return t0, {}
 
@@ -1362,8 +2690,6 @@ class Aidy:
             return t
 
         normalize_map = {
-            "up": "volume up",
-            "down": "volume down",
             "open louder": "volume up",
             "open louder up": "volume up",
             "open lower": "volume down",
@@ -1424,6 +2750,20 @@ class Aidy:
             "then up": "volume up",
             "them down": "volume down",
             "then down": "volume down",
+            # Common STT variants for "shutdown".
+            "shat laun": "shutdown",
+            "shut laun": "shutdown",
+            "shot laun": "shutdown",
+            "shat lawn": "shutdown",
+            "shut lawn": "shutdown",
+            "shot lawn": "shutdown",
+            "shut don": "shutdown",
+            "shut dawn": "shutdown",
+            "shot down": "shutdown",
+            "shat down": "shutdown",
+            "shut done": "shutdown",
+            "shut down": "shutdown",
+            "shut-down": "shutdown",
         }
 
         direct = normalize_map.get(t)
@@ -1454,6 +2794,63 @@ class Aidy:
                 self._cmd_log(f"normalize heuristic '{t}' -> 'volume down'")
                 return "volume down"
 
+        shutdown_verb = {
+            "shut",
+            "shutd",
+            "shuted",
+            "shutdown",
+            "shot",
+            "shat",
+            "chat",
+            "chut",
+            "shutit",
+        }
+        shutdown_tail = {
+            "down",
+            "dawn",
+            "don",
+            "done",
+            "daown",
+            "doun",
+            "douwn",
+            "dwon",
+            "town",
+            "laun",
+            "lawn",
+            "laon",
+            "lawn",
+        }
+        shutdown_fillers = {
+            "please",
+            "pls",
+            "plz",
+            "pc",
+            "computer",
+            "system",
+            "now",
+            "it",
+            "the",
+            "my",
+        }
+        parts = t.split()
+        if len(parts) == 2 and parts[0] in shutdown_verb and parts[1] in shutdown_tail:
+            self._cmd_log(f"normalize heuristic '{t}' -> 'shutdown'")
+            return "shutdown"
+        if len(parts) == 3 and parts[0] in shutdown_verb and parts[1] in {"it", "the"} and parts[2] in shutdown_tail:
+            self._cmd_log(f"normalize heuristic '{t}' -> 'shutdown'")
+            return "shutdown"
+        filtered = [p for p in parts if p not in shutdown_fillers]
+        if "shutdown" in filtered:
+            self._cmd_log(f"normalize heuristic '{t}' -> 'shutdown'")
+            return "shutdown"
+        if len(filtered) >= 2:
+            for i, p in enumerate(filtered):
+                if p in shutdown_verb or p.startswith(("shut", "shot", "shat", "chat", "chut")):
+                    lookahead = filtered[i + 1 : i + 3]
+                    if any(tok in shutdown_tail or tok.startswith(("dow", "daw", "don", "laun", "law")) for tok in lookahead):
+                        self._cmd_log(f"normalize heuristic '{t}' -> 'shutdown'")
+                        return "shutdown"
+
         return t
 
     def _is_command_like_text(self, text: str) -> bool:
@@ -1476,6 +2873,10 @@ class Aidy:
         if t in CLOSE_ACTIVE_PHRASES:
             return True
         if t in TIMER_START_PHRASES or t in TIMER_CANCEL_PHRASES:
+            return True
+        if t in STUDY_MODE_START_PHRASES or t in STUDY_MODE_START_ALIASES or t in STUDY_MODE_STOP_PHRASES or t in STUDY_MODE_STATUS_PHRASES:
+            return True
+        if self._study_intent_from_text(t) == INTENT_STUDY_MODE_START:
             return True
 
         if detect_step_intent_from_text(t):
@@ -1528,6 +2929,15 @@ class Aidy:
         return domains >= 2
 
     def _execute_intent(self, intent: str, entities: dict) -> bool:
+        if intent == INTENT_STUDY_MODE_START:
+            return self._start_study_mode()
+
+        if intent == INTENT_STUDY_MODE_STOP:
+            return self._stop_study_mode(announce=True, prompt_restore_now=True)
+
+        if intent == INTENT_STUDY_MODE_STATUS:
+            return self._speak_study_mode_status()
+
         if intent == "volume_change":
             direction = (entities.get("direction") or "").upper()
             steps = max(1, min(10, int(entities.get("magnitude_steps") or entities.get("steps") or 1)))
@@ -1685,6 +3095,12 @@ class Aidy:
             if not proc:
                 return False
             proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
+            if self._is_protected_process_for_close(proc_name):
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_now", "I won't close this app.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
             ui_state("SPEAKING")
             self.voice.play_or_tts("close_active", "Closing current app")
             self._deafen_after_speak()
@@ -1950,6 +3366,7 @@ class Aidy:
 
     def _handle_due_tasks(self):
         self._update_timer()
+        self._update_study_timer_watchdog()
         due = self.scheduler.tick()
         for task in due:
             ok = self._execute_intent(task.action_intent, task.entities)
@@ -2154,6 +3571,12 @@ class Aidy:
                 if not self._confirm_close_request():
                     return False
                 proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
+                if self._is_protected_process_for_close(proc_name):
+                    ui_state("WARNING")
+                    self.voice.play_or_tts("not_now", "I won't close this app.")
+                    self._deafen_after_speak()
+                    ui_state("IDLE")
+                    return False
                 ui_state("SPEAKING")
                 self.voice.play_or_tts("close_active", "Closing current app")
                 self._deafen_after_speak()
@@ -2237,6 +3660,39 @@ class Aidy:
             f"route text='{t0}' pending={'on' if pending_active else 'off'} "
             f"follow={'on' if self.follow_mode.is_active() else 'off'}"
         )
+
+        study_intent = self._study_intent_from_text(t0)
+        if study_intent == INTENT_STUDY_MODE_START:
+            if self._study_start_requires_confirmation(t0):
+                if not self._confirm_study_mode_request(t0):
+                    return False
+            if pending_active:
+                self.follow_up.clear_pending()
+            self.follow_mode.clear()
+            self.last_step_actions.clear()
+            ok = self._start_study_mode()
+            if ok:
+                self._set_last_command(text)
+                self._set_memory(INTENT_STUDY_MODE_START, {"seconds": STUDY_SESSION_SECONDS})
+                self._set_context(INTENT_STUDY_MODE_START, {"seconds": STUDY_SESSION_SECONDS})
+            return ok
+
+        if study_intent == INTENT_STUDY_MODE_STOP and self.study_mode_active:
+            if not self._confirm_study_stop_request(t0):
+                return False
+            if pending_active:
+                self.follow_up.clear_pending()
+            self.follow_mode.clear()
+            self.last_step_actions.clear()
+            ok = self._stop_study_mode(announce=True, prompt_restore_now=True)
+            if ok:
+                self._set_last_command(text)
+                self._set_memory(INTENT_STUDY_MODE_STOP, {})
+                self._set_context(INTENT_STUDY_MODE_STOP, {})
+            return ok
+
+        if study_intent == INTENT_STUDY_MODE_STATUS:
+            return self._speak_study_mode_status()
 
         if t0 in ("cancel", "stop") and pending_active:
             self._cancel_pending(speak_cancelled=True)
@@ -2468,6 +3924,13 @@ class Aidy:
                 return False
 
             proc_name = proc if proc.lower().endswith(".exe") else (proc + ".exe")
+            if self._is_protected_process_for_close(proc_name):
+                ui_state("WARNING")
+                self.voice.play_or_tts("not_now", "I won't close this app.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
 
             ui_state("SPEAKING")
             self.voice.play_or_tts("close_active", "Closing current app")
@@ -2729,6 +4192,26 @@ class Aidy:
             self.history.break_chain()
             return False
 
+        if intent in {INTENT_STUDY_MODE_START, "study mode", "start study", "start study mode"}:
+            normalized_text = " ".join((text or "").strip().lower().split())
+            if self._study_start_requires_confirmation(normalized_text):
+                if not self._confirm_study_mode_request(normalized_text):
+                    return False
+            ok = self._start_study_mode()
+            if ok:
+                self._set_last_command(text)
+                self._set_memory(INTENT_STUDY_MODE_START, {"seconds": STUDY_SESSION_SECONDS})
+                self._set_context(INTENT_STUDY_MODE_START, {"seconds": STUDY_SESSION_SECONDS})
+            return ok
+        if intent in {INTENT_STUDY_MODE_STOP, "stop study mode", "finish study mode", "end study mode"}:
+            if self.study_mode_active:
+                normalized_text = " ".join((text or "").strip().lower().split())
+                if not self._confirm_study_stop_request(normalized_text):
+                    return False
+            return self._stop_study_mode(announce=True, prompt_restore_now=True)
+        if intent in {INTENT_STUDY_MODE_STATUS, "study mode status"}:
+            return self._speak_study_mode_status()
+
         step_intent = api_intent_to_step_intent(intent)
         if step_intent:
             steps = extract_steps_value(text)
@@ -2923,6 +4406,12 @@ class Aidy:
             ui_state("LISTENING")
 
             while True:
+                with self._study_lock:
+                    restore_pending = bool(self.study_restore_prompt_pending)
+                if restore_pending:
+                    self._maybe_offer_restore_workspace()
+                    continue
+
                 if self.window_switch_active:
                     cmd_text = self.listen_command_vosk(max_seconds=3)
                     if cmd_text:
@@ -3000,6 +4489,9 @@ class Aidy:
 
                 wake_tail = self.wait_for_wake()
                 self._handle_due_tasks()
+                if wake_tail == "__STUDY_RESTORE_PROMPT__":
+                    self._maybe_offer_restore_workspace()
+                    continue
                 if wake_tail:
                     if self._is_non_action_utterance(wake_tail):
                         self._cmd_log(f"wake tail ignored non-action='{wake_tail}'")

@@ -3,18 +3,47 @@
 WAKE_KEYWORDS = {
     "aidy",
     "aidy assistant",
+    "aidy ai",
+    "aidy assitant",
+    "aidi assistant",
     "ady",
     "adi",
     "aidi",
+    "aidyy",
+    "aidyy assistant",
+    "eidy",
+    "edy",
+    "edi",
+    "aiddy",
     "a i d y",
+    "a d i",
+    "a d y",
+    "ai di",
+    "ay dee",
+    "эй ди",
     "hey aidy",
     "hey ady",
     "hey aidi",
     "hey adi",
+    "hey aidi assistant",
+    "hey eidy",
+    "hey edy",
+    "hey edi",
+    "hi aidy",
+    "hi ady",
+    "hi eidy",
     "hey assistant",
     "hello assistant",
+    "hello aidy",
+    "hello ady",
+    "hello eidy",
+    "yo aidy",
+    "ok ady",
+    "ok aidi",
     "ok aidy",
     "okay aidy",
+    "okay ady",
+    "okay aidi",
     "okay assistant",
     "eddie",
     "hey eddie",
@@ -26,8 +55,16 @@ WAKE_KEYWORDS = {
     "a d",
     "id",
     "эйди",
+    "эйди ассистент",
+    "эйди помощник",
+    "эй ди",
+    "эди",
+    "эйди",
+    "эйдии",
     "хей эйди",
     "хэй эйди",
+    "привет эйди",
+    "эйди слушай",
 }
 
 WAKE_FUZZY_ALIASES = {
@@ -39,6 +76,15 @@ WAKE_FUZZY_ALIASES = {
     "will im up",
     "willem",
     "william",
+    "ady",
+    "aidy",
+    "aidi",
+    "eidy",
+    "edi",
+    "addy",
+    "edy",
+    "эйди",
+    "эди",
 }
 
 def is_wake_phrase(text: str) -> bool:
@@ -52,8 +98,15 @@ def is_wake_phrase(text: str) -> bool:
         "ady",
         "adi",
         "aidi",
+        "aidyy",
+        "eidy",
+        "edy",
+        "edi",
+        "aiddy",
         "eddie",
         "eighty",
+        "эйди",
+        "эди",
         "эйди",
     }
     greetings = {"hey", "hello", "ok", "okay", "hi", "хей", "хэй"}
@@ -139,6 +192,72 @@ TIMER_CANCEL_PHRASES = {
     "стоп таймер",
     "otmena taymera",
     "stop taymer",
+}
+
+STUDY_MODE_DIRECT_START_PHRASES = {
+    "study mode",
+    "start study mode",
+    "start the study mode",
+    "begin study mode",
+    "enter study mode",
+    "study mode on",
+    "study mood",
+    "study mod",
+    "stady mode",
+    "studi mode",
+    "stadi mode",
+}
+
+STUDY_MODE_CONFIRM_START_PHRASES = {
+    "study",
+    "start study",
+    "study please",
+    "study now",
+    "stady",
+    "studi",
+    "stadi",
+    "study more",
+    "study remote",
+    "study remoat",
+    "study mor",
+    "open this court",
+}
+
+STUDY_MODE_START_PHRASES = (
+    STUDY_MODE_DIRECT_START_PHRASES
+    | STUDY_MODE_CONFIRM_START_PHRASES
+)
+
+STUDY_MODE_START_ALIASES = {
+    "study mode please",
+    "start the study",
+    "study maude",
+    "study moat",
+    "study moth",
+    "study mod on",
+    "study mood on",
+}
+
+STUDY_MODE_STOP_PHRASES = {
+    "stop",
+    "finish",
+    "end",
+    "stop study",
+    "stop study mode",
+    "finish study",
+    "finish study mode",
+    "end study",
+    "end study mode",
+}
+
+STUDY_MODE_STATUS_PHRASES = {
+    "study status",
+    "study mode status",
+    "how much time left",
+    "how much time is left",
+    "time left",
+    "time remaining",
+    "how much study time left",
 }
 
 

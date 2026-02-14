@@ -12,6 +12,7 @@ namespace WpfApp1.ViewModels
         private string _logText = "";
         private string _wakeDebugLog = "";
         private string _lastCommand = "";
+        private string _timerBadgeText = "";
         private AidyState _currentState = AidyState.Starting;
 
         public string StatusText
@@ -36,6 +37,12 @@ namespace WpfApp1.ViewModels
         {
             get => _lastCommand;
             set { _lastCommand = value; OnPropertyChanged(); }
+        }
+
+        public string TimerBadgeText
+        {
+            get => _timerBadgeText;
+            set { _timerBadgeText = value; OnPropertyChanged(); }
         }
 
         public AidyState CurrentState

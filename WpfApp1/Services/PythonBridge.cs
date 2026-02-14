@@ -18,6 +18,7 @@ namespace WpfApp1.Services
         public event Action<AidyState>? StateChanged;
         public event Action<string>? CommandHeard;
         public event Action<string, int, int>? TimerChanged;
+        public event Action<bool>? StudyModeChanged;
         public event Action<string>? LogLine;
 
         public PythonBridge(string pythonExe, string scriptPath, string workingDir)
@@ -204,6 +205,20 @@ namespace WpfApp1.Services
                     _ = int.TryParse(parts[1], out var remaining);
                     _ = int.TryParse(parts[2], out var total);
                     TimerChanged?.Invoke(eventName, remaining, total);
+                }
+                return;
+            }
+
+            if (line.StartsWith("STUDYMODE:", StringComparison.OrdinalIgnoreCase))
+            {
+                var payload = line.Substring("STUDYMODE:".Length).Trim().ToLowerInvariant();
+                if (payload is "on" or "1" or "true")
+                {
+                    StudyModeChanged?.Invoke(true);
+                }
+                else if (payload is "off" or "0" or "false")
+                {
+                    StudyModeChanged?.Invoke(false);
                 }
                 return;
             }
