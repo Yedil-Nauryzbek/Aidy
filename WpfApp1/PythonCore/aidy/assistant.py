@@ -156,7 +156,6 @@ STUDY_OPEN_URLS = (
 DISTRACT_PROCESSES = (
     "discord.exe",
     "telegram.exe",
-    "steam.exe",
     "epicgameslauncher.exe",
     "spotify.exe",
     "riotclientservices.exe",
@@ -175,8 +174,21 @@ SW_RESTORE = 9
 SMTO_ABORTIFHUNG = 0x0002
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
+DWM_CLOAKED = 14
 
 _USER32 = ctypes.windll.user32
+_DWMAPI = getattr(ctypes.windll, "dwmapi", None)
+if _DWMAPI is not None:
+    try:
+        _DWMAPI.DwmGetWindowAttribute.argtypes = [
+            wintypes.HWND,
+            ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.c_uint,
+        ]
+        _DWMAPI.DwmGetWindowAttribute.restype = ctypes.c_long
+    except Exception:
+        _DWMAPI = None
 
 
 def load_command_phrases(base_dir: str):
@@ -307,6 +319,11 @@ class Aidy:
             "systemsettings.exe",
             "wpfapp1.exe",
             "code.exe",
+            "obs64.exe",
+            "obs.exe",
+            "steam.exe",
+            "fxsound.exe",
+            "dfx.exe",
         }
         return allowed
 
@@ -324,6 +341,14 @@ class Aidy:
             "code - insiders.exe",
         }
         return p in protected
+
+    def _is_study_never_close_process(self, proc_name: str) -> bool:
+        p = (proc_name or "").strip().lower()
+        if not p:
+            return False
+        if not p.endswith(".exe"):
+            p += ".exe"
+        return p in {"obs64.exe", "obs.exe", "steam.exe"}
 
     def _tasklist_rows_for_pid(self, pid: int) -> list[list[str]]:
         safe_pid = int(pid)
@@ -627,6 +652,23 @@ class Aidy:
         ui_state("CONFIRM")
         self._cmd_log("study confirm expected")
 
+    def _is_window_cloaked(self, hwnd: int) -> bool:
+        if _DWMAPI is None:
+            return False
+        try:
+            cloaked = ctypes.c_int(0)
+            hr = _DWMAPI.DwmGetWindowAttribute(
+                wintypes.HWND(int(hwnd)),
+                ctypes.c_uint(DWM_CLOAKED),
+                ctypes.byref(cloaked),
+                ctypes.sizeof(cloaked),
+            )
+            if int(hr) != 0:
+                return False
+            return int(cloaked.value) != 0
+        except Exception:
+            return False
+
     def _enum_visible_real_windows(self) -> list[dict]:
         windows: list[dict] = []
         enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
@@ -635,6 +677,8 @@ class Aidy:
         def _cb(hwnd, _lparam):
             try:
                 if not _USER32.IsWindowVisible(hwnd):
+                    return True
+                if self._is_window_cloaked(int(hwnd)):
                     return True
                 title_len = _USER32.GetWindowTextLengthW(hwnd)
                 if title_len <= 0:
@@ -803,6 +847,12 @@ class Aidy:
                     f"wm_close folder hwnd={hwnd} pid={pid} process={process_name} sent={'yes' if sent else 'no'} title='{title}'"
                 )
                 continue
+            if self._is_study_never_close_process(process_name):
+                skipped += 1
+                self._study_log(
+                    f"skip hwnd={hwnd} pid={pid} process={process_name} reason=study_never_close"
+                )
+                continue
             if process_name in self.study_allowed_processes:
                 skipped += 1
                 continue
@@ -828,6 +878,8 @@ class Aidy:
                 continue
             process_name = self._process_name_by_pid(pid)
             if not process_name:
+                continue
+            if self._is_study_never_close_process(process_name):
                 continue
             if process_name in self.study_allowed_processes:
                 continue
@@ -907,6 +959,9 @@ class Aidy:
             return False
         if not target.endswith(".exe"):
             target += ".exe"
+        if self._is_study_never_close_process(target):
+            self._study_log(f"DistractGuard skip protected process: {target}")
+            return False
         if target not in self.study_distract_processes:
             return False
 
