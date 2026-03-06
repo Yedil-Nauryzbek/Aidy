@@ -1,0 +1,19 @@
+# Visual Studio
+.vs/
+bin/
+obj/
+*.user
+*.suo
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# Large models
+vosk-model-*/
+WpfApp1/vosk_model.zip

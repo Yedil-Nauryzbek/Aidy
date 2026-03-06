@@ -1,0 +1,16 @@
+{
+  "0": "brightness down",
+  "1": "brightness up",
+  "2": "close app",
+  "3": "lock",
+  "4": "open app",
+  "5": "open cmd",
+  "6": "restart",
+  "7": "screenshot",
+  "8": "show desktop",
+  "9": "shutdown",
+  "10": "switch window",
+  "11": "task manager",
+  "12": "volume down",
+  "13": "volume up"
+}

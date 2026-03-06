@@ -1,0 +1,16 @@
+{
+  "push_to_talk_enabled": false,
+  "push_to_talk_key": "LeftCtrl",
+  "auto_start_enabled": false,
+  "audio": {
+    "microphone": "",
+    "output_device": ""
+  },
+  "startup": {
+    "greeting_enabled": false
+  },
+  "aidi": {
+    "file_path": "",
+    "volume": 50
+  }
+}
