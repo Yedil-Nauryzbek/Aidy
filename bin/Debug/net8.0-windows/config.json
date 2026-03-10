@@ -1,0 +1,17 @@
+{
+  "push_to_talk_enabled": true,
+  "push_to_talk_key": "LeftCtrl",
+  "auto_start_enabled": true,
+  "audio": {
+    "microphone": "\u041D\u0430\u0431\u043E\u0440 \u043C\u0438\u043A\u0440\u043E\u0444\u043E\u043D\u043E\u0432 (Realtek(R) Au",
+    "output_device": "\u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0438 (Realtek(R) Audio)"
+  },
+  "startup": {
+    "greeting_enabled": false
+  },
+  "aidi": {
+    "file_path": "",
+    "volume": 100
+  },
+  "voice_id_enabled": false
+}
