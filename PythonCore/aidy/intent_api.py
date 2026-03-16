@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import os
 import sys
 import socket
@@ -74,11 +74,12 @@ def start_local_intent_api(base_dir: str):
 class IntentAPI:
     def __init__(self, url: str):
         self.url = url
+        self._session = requests.Session()
 
     def get_intent(self, text: str):
         try:
             # Keep API fallback responsive so recognition loop never "hangs" on a bad request.
-            r = requests.post(self.url, json={"text": text}, timeout=(0.6, 2.5))
+            r = self._session.post(self.url, json={"text": text}, timeout=(0.6, 2.5))
             if r.status_code == 200:
                 return r.json()
             error(f"API error: HTTP {r.status_code}")

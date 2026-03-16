@@ -11,6 +11,7 @@ namespace WpfApp1.Models
         public AudioConfig Audio { get; set; } = new();
         public StartupConfig Startup { get; set; } = new();
         public AidiConfig Aidi { get; set; } = new();
+        public LocalModeConfig LocalMode { get; set; } = new();
     }
 
     public sealed class AudioConfig
@@ -21,12 +22,26 @@ namespace WpfApp1.Models
 
     public sealed class StartupConfig
     {
-        public bool GreetingEnabled { get; set; }
+        public bool GreetingEnabled { get; set; } = true;
     }
 
     public sealed class AidiConfig
     {
         public string FilePath { get; set; } = string.Empty;
         public int Volume { get; set; } = AppConfig.DefaultAidiVolume;
+    }
+
+    public sealed class LocalModeSlot
+    {
+        public string ActionType { get; set; } = string.Empty;
+        public string Target { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+    }
+
+    public sealed class LocalModeConfig
+    {
+        public bool Enabled { get; set; }
+        public LocalModeSlot[] Slots { get; set; } =
+            new[] { new LocalModeSlot(), new LocalModeSlot(), new LocalModeSlot() };
     }
 }

@@ -1,8 +1,10 @@
 ﻿// WpfApp1/Views/MainWindow.xaml.cs
+using System.DirectoryServices.AccountManagement;
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
@@ -70,10 +72,13 @@ namespace WpfApp1.Views
         private readonly Thickness _normalOrbMargin = new(0, 140, 0, 0);
         private readonly Thickness _compactOrbMargin = new(0, -20, 0, 0);
         private readonly double _normalOrbScale = 1.0;
-        private readonly double _compactOrbScale = 0.45;
+        private readonly double _compactOrbScale = 0.58;
         private bool _bridgeStarted;
         private bool _isPushToTalkPressed;
         private bool _isApplyingAutoStartSetting;
+        private bool _isEnrollmentActive;
+        private bool _enrollmentConfirmedByPython;
+        private DispatcherTimer? _enrollmentTimeoutTimer;
         private static readonly string[] WakeDebugMarkers =
         {
             "[WAKE]",
@@ -95,6 +100,8 @@ namespace WpfApp1.Views
 
         // ===== Ring storyboard controller =====
         private Storyboard? _ringSb;
+        private Storyboard? _emblemSb;
+        private bool _emblemVisible = false;
         private double _smoothScrollTargetOffset;
         public static readonly DependencyProperty CurrentScrollOffsetProperty =
             DependencyProperty.Register(
@@ -143,9 +150,15 @@ namespace WpfApp1.Views
             _vm.AutoStartEnabled = syncedAutoStartEnabled;
             _vm.SetAudioDevices(inputDevices, outputDevices, appConfig.Audio.Microphone, appConfig.Audio.OutputDevice);
             _vm.GreetingOnStartupEnabled = appConfig.Startup.GreetingEnabled;
-            _vm.AidiFilePath = appConfig.Aidi.FilePath;
+            _vm.AidiFilePath = string.IsNullOrWhiteSpace(appConfig.Aidi.FilePath)
+                ? GetProjectRootDirectory(baseDir)
+                : appConfig.Aidi.FilePath;
             _vm.AidiVolume = appConfig.Aidi.Volume;
             _vm.VoiceIdEnabled = appConfig.VoiceIdEnabled;
+            _vm.LocalModeEnabled = appConfig.LocalMode.Enabled;
+            var savedSlots = appConfig.LocalMode.Slots;
+            for (int i = 0; i < Math.Min(savedSlots.Length, _vm.LocalModeSlots.Count); i++)
+                _vm.LocalModeSlots[i].Apply(savedSlots[i]);
 
             appConfig.AutoStartEnabled = syncedAutoStartEnabled;
             appConfig.Audio.Microphone = _vm.SelectedMicrophoneDevice;
@@ -196,20 +209,51 @@ namespace WpfApp1.Views
             {
                 StudyTipsPanel.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
             });
+            _bridge.LocalModeChanged += active => Dispatcher.Invoke(() =>
+            {
+                _vm.LocalModeEnabled = active;
+                SaveCurrentConfig();
+            });
+            _bridge.VoiceActivityChanged += active => Dispatcher.Invoke(() => SetEmblemActive(active));
+            _bridge.EnrollmentFinished += () => Dispatcher.Invoke(() =>
+            {
+                // Python explicitly signalled the end of enrollment — safe to close the overlay.
+                _enrollmentTimeoutTimer?.Stop();
+                _isEnrollmentActive = false;
+                _enrollmentConfirmedByPython = false;
+                EnrollmentOverlay.Visibility = Visibility.Collapsed;
+            });
+            _bridge.EnrollmentStarted += () => Dispatcher.Invoke(() =>
+            {
+                // Python acknowledged the enrollment — cancel button is now safe to use.
+                Debug.WriteLine("[Enroll] Python confirmed ENROLL_STARTED.");
+                _enrollmentTimeoutTimer?.Stop();
+                _enrollmentConfirmedByPython = true;
+            });
+            _bridge.EnrollmentTextChanged += (status, progress) => Dispatcher.Invoke(() =>
+            {
+                EnrollmentStatusText.Text = status;
+                EnrollmentProgressText.Text = progress;
+            });
 
             Loaded += (_, __) =>
             {
                 // --- ЗАПУСК ЗАСТАВКИ ---
-                var videoPath = Path.Combine(baseDir, "Assets", "SplashOverlay.mp4");
-                if (File.Exists(videoPath))
+                if (_vm.GreetingOnStartupEnabled)
                 {
-                    SplashVideo.Source = new Uri(videoPath, UriKind.Absolute);
-                    SplashVideo.Play();
+                    var videoPath = Path.Combine(baseDir, "Assets", "SplashOverlay.mp4");
+                    if (File.Exists(videoPath))
+                    {
+                        SplashVideo.Source = new Uri(videoPath, UriKind.Absolute);
+                        SplashVideo.Play();
+                    }
+                    else
+                    {
+                        SplashOverlay.Visibility = Visibility.Collapsed;
+                    }
                 }
                 else
                 {
-                    // ВЫВОДИМ ОШИБКУ:
-                    MessageBox.Show($"Видео не найдено!\nПуть, где искала программа:\n{videoPath}", "Ошибка заставки");
                     SplashOverlay.Visibility = Visibility.Collapsed;
                 }
                 // -----------------------
@@ -223,6 +267,7 @@ namespace WpfApp1.Views
                 _pushToTalkHotkey.Start();
                 ApplyPushToTalkSettings(persistConfig: false);
                 _bridge.SendControlCommand($"set_volume:{_vm.AidiVolume}");
+                _bridge.SendControlCommand($"set_voice_id:{(_vm.VoiceIdEnabled ? "1" : "0")}");
             };
 
             Closing += (_, __) =>
@@ -415,6 +460,9 @@ namespace WpfApp1.Views
         {
             if (e.PropertyName == nameof(MainViewModel.CurrentState))
             {
+                // NOTE: overlay lifecycle is now driven entirely by _isEnrollmentActive and the
+                // EnrollmentFinished bridge event. Do NOT hide the overlay here based on Idle/Success —
+                // those states are emitted between TTS prompts and would close the overlay too early.
                 RefreshPushToTalkWaitingState();
                 ApplyState(_vm.CurrentState);
                 return;
@@ -431,6 +479,12 @@ namespace WpfApp1.Views
             if (e.PropertyName == nameof(MainViewModel.AutoStartEnabled))
             {
                 ApplyAutoStartSettings(persistConfig: true);
+                return;
+            }
+
+            if (e.PropertyName == nameof(MainViewModel.LocalModeEnabled))
+            {
+                SaveCurrentConfig();
                 return;
             }
 
@@ -509,16 +563,232 @@ namespace WpfApp1.Views
 
         private void EnrollAdminVoice_Click(object sender, RoutedEventArgs e)
         {
-            if (!_bridgeStarted)
+            if (!_bridgeStarted || _isEnrollmentActive) return;
+
+            // 1. Спрашиваем, уверен ли пользователь
+            var confirmResult = MessageBox.Show(
+                "Are you sure you want to setup the Voice ID?\nThis will overwrite any existing administrator voice profile.",
+                "Confirm Voice Enrollment",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirmResult != MessageBoxResult.Yes) return;
+
+            // 2. Создаем красивое поле для пароля
+            string username = Environment.UserName;
+            var passwordBox = new System.Windows.Controls.PasswordBox()
             {
+                Margin = new Thickness(0, 5, 0, 15),
+                Height = 35,
+                FontSize = 16,
+                Background = Brushes.White,
+                Foreground = Brushes.Black,
+                Padding = new Thickness(6, 4, 6, 4)
+            };
+
+            // 3. Создаем кнопку и пытаемся натянуть на нее стиль SettingsActionButton
+            var verifyBtn = new Button
+            {
+                Content = "Verify",
+                Height = 40,
+                IsDefault = true,
+                Cursor = Cursors.Hand,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 15
+            };
+
+            var btnStyle = this.TryFindResource("SettingsActionButton") as Style;
+            if (btnStyle != null)
+            {
+                verifyBtn.Style = btnStyle;
+            }
+            else
+            {
+                // Фоллбэк, если стиль не найдется
+                verifyBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1B3D72"));
+                verifyBtn.Foreground = Brushes.White;
+                verifyBtn.BorderThickness = new Thickness(0);
+            }
+
+            // Собираем элементы в колонку
+            var stack = new StackPanel { Margin = new Thickness(25) };
+            stack.Children.Add(new TextBlock {
+                Text = $"Enter Windows password for '{username}':",
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 14,
+                Foreground = Brushes.White,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+            stack.Children.Add(passwordBox);
+            stack.Children.Add(verifyBtn);
+
+            // 4. Окно авторизации
+            var dialog = new Window
+            {
+                Title = "Aidy Security - Authentication",
+                Width = 380,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Topmost = true,
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#141A2B")),
+                Content = stack,
+                AllowsTransparency = false,
+                WindowStyle = WindowStyle.SingleBorderWindow,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            bool isVerified = false;
+            verifyBtn.Click += (s, args) =>
+            {
+                try
+                {
+                    using (var context = new PrincipalContext(ContextType.Machine))
+                    {
+                        isVerified = context.ValidateCredentials(username, passwordBox.Password);
+                    }
+                }
+                catch { isVerified = false; }
+                dialog.DialogResult = isVerified;
+                dialog.Close();
+            };
+
+            // 5. Запускаем диалог
+            if (dialog.ShowDialog() != true || !isVerified)
+            {
+                MessageBox.Show("Authentication failed or cancelled.", "Access Denied", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            _bridge.SendControlCommand("enroll_admin");
+            // 6. Если пароль верный — переходим к записи голоса
+            _isEnrollmentActive = true;
+            _enrollmentConfirmedByPython = false;
+
+            EnrollmentOverlay.Visibility = Visibility.Visible;
+            EnrollmentStatusText.Text = "Aidy is preparing...";
+            EnrollmentProgressText.Text = "";
+
+            Debug.WriteLine("[Enroll] Sending control command: enroll_admin_force");
+            var sent = _bridge.SendControlCommand("enroll_admin_force");
+            if (!sent)
+            {
+                Debug.WriteLine("[Enroll] SendControlCommand failed — will retry in 3s");
+            }
+
+            // Start a timeout timer: if Python doesn't confirm within 15s, retry once then give up.
+            int enrollRetries = 0;
+            _enrollmentTimeoutTimer?.Stop();
+            _enrollmentTimeoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(sent ? 15 : 3) };
+            _enrollmentTimeoutTimer.Tick += (_, __) =>
+            {
+                if (_enrollmentConfirmedByPython || !_isEnrollmentActive)
+                {
+                    _enrollmentTimeoutTimer?.Stop();
+                    return;
+                }
+
+                enrollRetries++;
+                if (enrollRetries <= 2)
+                {
+                    Debug.WriteLine($"[Enroll] Timeout — retrying enroll_admin_force (attempt {enrollRetries})");
+                    EnrollmentStatusText.Text = "Aidy is preparing... (retrying)";
+                    _bridge.SendControlCommand("enroll_admin_force");
+                    _enrollmentTimeoutTimer!.Interval = TimeSpan.FromSeconds(10);
+                }
+                else
+                {
+                    Debug.WriteLine("[Enroll] Timeout — giving up after retries");
+                    _enrollmentTimeoutTimer?.Stop();
+                    _isEnrollmentActive = false;
+                    EnrollmentOverlay.Visibility = Visibility.Collapsed;
+                    MessageBox.Show(
+                        "Voice enrollment timed out. Please make sure Aidy is running and try again.",
+                        "Enrollment Failed",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            };
+            _enrollmentTimeoutTimer.Start();
+
+            // Safety timeout: if enrollment is confirmed but takes too long (e.g., Python crash),
+            // close the overlay after 90 seconds to prevent it from being stuck forever.
+            var safetyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(90) };
+            safetyTimer.Tick += (_, __) =>
+            {
+                safetyTimer.Stop();
+                if (_isEnrollmentActive)
+                {
+                    Debug.WriteLine("[Enroll] Safety timeout (90s) — force-closing overlay.");
+                    _enrollmentTimeoutTimer?.Stop();
+                    _isEnrollmentActive = false;
+                    _enrollmentConfirmedByPython = false;
+                    EnrollmentOverlay.Visibility = Visibility.Collapsed;
+                }
+            };
+            safetyTimer.Start();
+        }
+
+        private void CancelEnrollment_Click(object sender, RoutedEventArgs e)
+        {
+            Debug.WriteLine($"[Enroll] CancelEnrollment_Click: confirmed={_enrollmentConfirmedByPython}, active={_isEnrollmentActive}");
+
+            if (!_isEnrollmentActive)
+            {
+                Debug.WriteLine("[Enroll] Cancel ignored: enrollment not active.");
+                return;
+            }
+
+            // User cancelled manually — clear flag and hide immediately.
+            _isEnrollmentActive = false;
+            EnrollmentOverlay.Visibility = Visibility.Collapsed;
+
+            // Only send the cancel command if Python has acknowledged the enrollment.
+            // This prevents a race where cancel_enrollment arrives before Python even starts.
+            if (_enrollmentConfirmedByPython)
+            {
+                _enrollmentConfirmedByPython = false;
+                Debug.WriteLine("[Enroll] Sending cancel_enrollment (Python had confirmed start).");
+                _bridge.SendControlCommand("cancel_enrollment");
+            }
+            else
+            {
+                Debug.WriteLine("[Enroll] Cancel suppressed: Python has not confirmed ENROLL_STARTED yet.");
+            }
+        }
+
+        private void LocalModeSlot_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { Tag: int idx }) return;
+            if (idx < 0 || idx >= _vm.LocalModeSlots.Count) return;
+
+            var picker = new LocalModePickerWindow(idx) { Owner = this };
+            if (picker.ShowDialog() == true && picker.Result is { } result)
+            {
+                var slot = _vm.LocalModeSlots[idx];
+                slot.ActionType  = result.ActionType;
+                slot.Target      = result.Target;
+                slot.DisplayName = result.DisplayName;
+                SaveCurrentConfig();
+            }
+        }
+
+        private void LocalModeSlotClear_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { Tag: int idx }) return;
+            if (idx < 0 || idx >= _vm.LocalModeSlots.Count) return;
+            _vm.LocalModeSlots[idx].Clear();
+            SaveCurrentConfig();
         }
 
         private void BrowseAidiFile_Click(object sender, RoutedEventArgs e)
         {
+            string? initialDir = null;
+            if (!string.IsNullOrWhiteSpace(_vm.AidiFilePath))
+            {
+                var existing = Path.GetDirectoryName(_vm.AidiFilePath);
+                if (!string.IsNullOrEmpty(existing) && Directory.Exists(existing))
+                    initialDir = existing;
+            }
+
             var dialog = new OpenFileDialog
             {
                 Title = "Select AIDI File",
@@ -526,7 +796,8 @@ namespace WpfApp1.Views
                 CheckPathExists = true,
                 DereferenceLinks = true,
                 Multiselect = false,
-                Filter = "All files (*.*)|*.*"
+                Filter = "All files (*.*)|*.*",
+                InitialDirectory = initialDir ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             };
 
             if (dialog.ShowDialog(this) == true)
@@ -691,6 +962,11 @@ namespace WpfApp1.Views
                     FilePath = normalizedAidiPath,
                     Volume = _vm.AidiVolume,
                 },
+                LocalMode = new LocalModeConfig
+                {
+                    Enabled = _vm.LocalModeEnabled,
+                    Slots   = _vm.LocalModeSlots.Select(s => s.ToModel()).ToArray(),
+                },
             });
         }
 
@@ -734,6 +1010,36 @@ namespace WpfApp1.Views
             {
                 return string.Empty;
             }
+        }
+
+        private static void CloseOpenComboBoxes(DependencyObject root)
+        {
+            if (root == null) return;
+            int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+                if (child is ComboBox cb && cb.IsDropDownOpen)
+                    cb.IsDropDownOpen = false;
+                else
+                    CloseOpenComboBoxes(child);
+            }
+        }
+
+        private static string GetProjectRootDirectory(string baseDir)
+        {
+            // Walk up, skipping typical build output segments (bin, obj, Debug, Release, net*-*)
+            var buildSegments = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                { "bin", "obj", "Debug", "Release", "x64", "x86", "AnyCPU" };
+            var dir = new DirectoryInfo(baseDir.TrimEnd(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            while (dir?.Parent != null &&
+                   (buildSegments.Contains(dir.Name) ||
+                    (dir.Name.StartsWith("net", StringComparison.OrdinalIgnoreCase) && dir.Name.Contains('.'))))
+            {
+                dir = dir.Parent;
+            }
+            return dir?.FullName ?? baseDir;
         }
 
         private static string ResolvePythonScriptPath(string baseDir)
@@ -1013,6 +1319,40 @@ namespace WpfApp1.Views
             };
         }
 
+        // ===== Emblem VAD animation =====
+        private void SetEmblemActive(bool active)
+        {
+            // Only animate when emblem is actually visible (LISTENING / COMMAND_LISTENING states)
+            if (!_emblemVisible)
+                return;
+
+            if (active)
+            {
+                if (_emblemSb != null)
+                    return; // already running
+                if (Resources["SB_Emblem_Active"] is Storyboard sb)
+                {
+                    _emblemSb = sb;
+                    sb.Begin(this, true);
+                }
+            }
+            else
+            {
+                if (_emblemSb != null)
+                {
+                    _emblemSb.Stop(this);
+                    _emblemSb = null;
+                }
+                // Reset emblem to neutral
+                EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+                EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+                EmblemScale.ScaleX = 1; EmblemScale.ScaleY = 1;
+                EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, null);
+                EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.BlurRadiusProperty, null);
+                EmblemGlow.Opacity = 0; EmblemGlow.BlurRadius = 0;
+            }
+        }
+
         // ===== Ring storyboard runner =====
         private void StartRing(string key)
         {
@@ -1052,10 +1392,21 @@ namespace WpfApp1.Views
             WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
             Wave.Visibility = Visibility.Visible;
             WaitingHotkeySleep.Visibility = Visibility.Collapsed;
-            ListeningMic.Visibility = Visibility.Collapsed;
             SpeakingWave.Visibility = Visibility.Collapsed;
             FollowUpWave.Visibility = Visibility.Collapsed;
+            CenterEmblem.Visibility = Visibility.Collapsed;
+            _emblemVisible = false;
+            if (_emblemSb != null) { _emblemSb.Stop(this); _emblemSb = null; }
+            EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+            EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+            EmblemScale.ScaleX = 1; EmblemScale.ScaleY = 1;
+            EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, null);
+            EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.BlurRadiusProperty, null);
+            EmblemGlow.Opacity = 0; EmblemGlow.BlurRadius = 0;
             StopWaveformAnimation();
+
+            // NOTE: overlay lifecycle is now driven entirely by _isEnrollmentActive and the
+            // EnrollmentFinished bridge event. Do NOT hide the overlay here based on Idle/Success.
 
             // ===== Ring storyboard by state =====
             switch (state)
@@ -1140,7 +1491,8 @@ namespace WpfApp1.Views
                 case AidyState.CommandListening:
                     Wave.Opacity = 1;
                     Wave.Visibility = Visibility.Collapsed;
-                    ListeningMic.Visibility = Visibility.Visible;
+                    CenterEmblem.Visibility = Visibility.Visible;
+                    _emblemVisible = true;
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
@@ -1302,6 +1654,13 @@ namespace WpfApp1.Views
                 MaximizeButton.Visibility = Visibility.Collapsed;
                 MaximizeToCloseSpacer.Visibility = Visibility.Collapsed;
 
+                CompactToggleButton.Width = 36;
+                CompactToggleButton.Height = 26;
+                MinimizeButton.Width = 32;
+                MinimizeButton.Height = 26;
+                CloseButton.Width = 32;
+                CloseButton.Height = 26;
+
                 CompactIconInward.Visibility = Visibility.Collapsed;
                 CompactIconOutward.Visibility = Visibility.Visible;
                 return;
@@ -1342,6 +1701,13 @@ namespace WpfApp1.Views
             MinimizeButton.Visibility = Visibility.Visible;
             MaximizeButton.Visibility = Visibility.Visible;
             MaximizeToCloseSpacer.Visibility = Visibility.Visible;
+
+            CompactToggleButton.Width = 52;
+            CompactToggleButton.Height = 34;
+            MinimizeButton.Width = 44;
+            MinimizeButton.Height = 32;
+            CloseButton.Width = 44;
+            CloseButton.Height = 32;
 
             CompactIconInward.Visibility = Visibility.Visible;
             CompactIconOutward.Visibility = Visibility.Collapsed;
@@ -1456,6 +1822,9 @@ namespace WpfApp1.Views
             {
                 return;
             }
+
+            // Close any open ComboBox dropdowns before scrolling so they don't float out of place.
+            CloseOpenComboBoxes(SettingsPage);
 
             e.Handled = true;
 

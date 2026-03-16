@@ -1,4 +1,4 @@
-﻿// WpfApp1/Services/PythonBridge.cs
+// WpfApp1/Services/PythonBridge.cs
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -20,11 +20,20 @@ namespace WpfApp1.Services
         private Task? _stdoutTask;
         private Task? _stderrTask;
         private AidyState _lastState = AidyState.Starting;
+        private bool _disposed;
+        private int _restartCount;
+        private const int MaxAutoRestarts = 5;
+        private DateTime _lastRestartTime = DateTime.MinValue;
 
         public event Action<AidyState>? StateChanged;
         public event Action<string>? CommandHeard;
         public event Action<string, int, int>? TimerChanged;
         public event Action<bool>? StudyModeChanged;
+        public event Action<bool>? LocalModeChanged;
+        public event Action<bool>? VoiceActivityChanged;           // from repo
+        public event Action? EnrollmentFinished;                    // from yours
+        public event Action? EnrollmentStarted;                     // from yours
+        public event Action<string, string>? EnrollmentTextChanged; // from yours (statusText, progressText)
         public event Action<string>? LogLine;
 
         public PythonBridge(string pythonExe, string scriptPath, string workingDir)
@@ -34,9 +43,30 @@ namespace WpfApp1.Services
             _workingDir = workingDir ?? throw new ArgumentNullException(nameof(workingDir));
         }
 
+        private void CleanupProcess()
+        {
+            try { _ioCts?.Cancel(); } catch { }
+            try
+            {
+                Task.WaitAll(new[]
+                {
+                    _stdoutTask ?? Task.CompletedTask,
+                    _stderrTask ?? Task.CompletedTask,
+                }, 500);
+            }
+            catch { }
+            try { _ioCts?.Dispose(); } catch { }
+            _ioCts = null;
+            _stdoutTask = null;
+            _stderrTask = null;
+            try { _proc?.Dispose(); } catch { }
+            _proc = null;
+        }
+
         public void Start()
         {
             if (_proc != null) return;
+            _lastRestartTime = DateTime.UtcNow;
 
             var pythonExe = ResolveExe(_pythonExe);
             if (pythonExe == null)
@@ -59,7 +89,7 @@ namespace WpfApp1.Services
             var psi = new ProcessStartInfo
             {
                 FileName = pythonExe,
-                Arguments = $"-X utf8 \"{_scriptPath}\" --ui",
+                Arguments = $"-u -X utf8 \"{_scriptPath}\" --ui",
                 WorkingDirectory = pythonCoreDir,
 
                 RedirectStandardOutput = true,
@@ -76,6 +106,8 @@ namespace WpfApp1.Services
             // UTF-8 safety
             psi.Environment["PYTHONIOENCODING"] = "utf-8";
             psi.Environment["PYTHONUTF8"] = "1";
+            // Force fully unbuffered stdout/stderr at C runtime level
+            psi.Environment["PYTHONUNBUFFERED"] = "1";
 
             // Make sure imports work (aidy/*).
             psi.Environment["PYTHONPATH"] = pythonCoreDir;
@@ -98,10 +130,40 @@ namespace WpfApp1.Services
                     var exitCode = _proc?.ExitCode ?? -1;
                     LogLine?.Invoke($"[Bridge] Python exited with code {exitCode}");
 
-                    if (_lastState == AidyState.Error || exitCode != 0)
-                        StateChanged?.Invoke(AidyState.Error);
-                    else
+                    if (_disposed)
+                    {
                         StateChanged?.Invoke(AidyState.Offline);
+                        return;
+                    }
+
+                    // Reset restart counter if the process ran for more than 30 seconds
+                    if ((DateTime.UtcNow - _lastRestartTime).TotalSeconds > 30)
+                        _restartCount = 0;
+
+                    if (_restartCount < MaxAutoRestarts)
+                    {
+                        _restartCount++;
+                        LogLine?.Invoke($"[Bridge] Auto-restarting python (attempt {_restartCount}/{MaxAutoRestarts})...");
+                        StateChanged?.Invoke(AidyState.Starting);
+
+                        // Clean up old process resources before restart
+                        CleanupProcess();
+
+                        Task.Run(async () =>
+                        {
+                            await Task.Delay(1500);
+                            if (!_disposed)
+                                Start();
+                        });
+                    }
+                    else
+                    {
+                        LogLine?.Invoke("[Bridge] Max auto-restart attempts reached.");
+                        if (_lastState == AidyState.Error || exitCode != 0)
+                            StateChanged?.Invoke(AidyState.Error);
+                        else
+                            StateChanged?.Invoke(AidyState.Offline);
+                    }
                 }
                 catch
                 {
@@ -206,7 +268,7 @@ namespace WpfApp1.Services
                     _ => null
                 };
 
-                if (s != null)
+                if (s != null && s.Value != _lastState)
                 {
                     _lastState = s.Value;
                     LogLine?.Invoke($"[Bridge] Parsed state: {s.Value}");
@@ -254,6 +316,49 @@ namespace WpfApp1.Services
                 return;
             }
 
+            if (line.StartsWith("LOCALMODE:", StringComparison.OrdinalIgnoreCase))
+            {
+                var payload = line.Substring("LOCALMODE:".Length).Trim().ToLowerInvariant();
+                if (payload is "on" or "1" or "true")
+                    LocalModeChanged?.Invoke(true);
+                else if (payload is "off" or "0" or "false")
+                    LocalModeChanged?.Invoke(false);
+                return;
+            }
+
+            // ── from repo: voice activity ─────────────────────────────────
+            if (line.StartsWith("VOICE_ACTIVITY:", StringComparison.OrdinalIgnoreCase))
+            {
+                var payload = line.Substring("VOICE_ACTIVITY:".Length).Trim().ToLowerInvariant();
+                if (payload is "on" or "1" or "true")
+                    VoiceActivityChanged?.Invoke(true);
+                else if (payload is "off" or "0" or "false")
+                    VoiceActivityChanged?.Invoke(false);
+                return;
+            }
+
+            // ── from yours: enrollment events ─────────────────────────────
+            if (line.StartsWith("EVENT:", StringComparison.OrdinalIgnoreCase))
+            {
+                var evt = line.Substring("EVENT:".Length).Trim().ToUpperInvariant();
+                if (evt == "ENROLLMENT_FINISHED")
+                    EnrollmentFinished?.Invoke();
+                else if (evt == "ENROLL_STARTED")
+                    EnrollmentStarted?.Invoke();
+                return;
+            }
+
+            if (line.StartsWith("CONTROL:enroll_text:", StringComparison.OrdinalIgnoreCase))
+            {
+                // Format: CONTROL:enroll_text:<status>|<progress>
+                var payload = line.Substring("CONTROL:enroll_text:".Length);
+                var sep = payload.IndexOf('|');
+                var status = sep >= 0 ? payload.Substring(0, sep).Trim() : payload.Trim();
+                var progress = sep >= 0 ? payload.Substring(sep + 1).Trim() : string.Empty;
+                EnrollmentTextChanged?.Invoke(status, progress);
+                return;
+            }
+
             if (IsFatalPythonLine(line))
             {
                 _lastState = AidyState.Error;
@@ -263,6 +368,7 @@ namespace WpfApp1.Services
 
         public void Dispose()
         {
+            _disposed = true;
             try
             {
                 _ioCts?.Cancel();
@@ -301,27 +407,41 @@ namespace WpfApp1.Services
         {
             if (string.IsNullOrWhiteSpace(command))
             {
+                Debug.WriteLine("[Bridge] SendControlCommand: empty command, skipped.");
                 return false;
             }
 
             try
             {
                 var process = _proc;
-                if (process == null || process.HasExited)
+                if (process == null)
                 {
+                    Debug.WriteLine($"[Bridge] SendControlCommand '{command}': FAILED — _proc is null.");
+                    LogLine?.Invoke($"[Bridge] SendControlCommand '{command}': FAILED — _proc is null.");
+                    return false;
+                }
+
+                if (process.HasExited)
+                {
+                    Debug.WriteLine($"[Bridge] SendControlCommand '{command}': FAILED — process has already exited.");
+                    LogLine?.Invoke($"[Bridge] SendControlCommand '{command}': FAILED — process has already exited.");
                     return false;
                 }
 
                 lock (_stdinSync)
                 {
+                    Debug.WriteLine($"[Bridge] Writing to stdin: '{command}'");
                     process.StandardInput.WriteLine(command);
                     process.StandardInput.Flush();
+                    Debug.WriteLine($"[Bridge] stdin write + flush OK for: '{command}'");
                 }
 
+                LogLine?.Invoke($"[Bridge] Sent: {command}");
                 return true;
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"[Bridge] SendControlCommand '{command}' EXCEPTION: {ex.Message}");
                 LogLine?.Invoke($"[Bridge] Control command failed: {ex.Message}");
                 return false;
             }

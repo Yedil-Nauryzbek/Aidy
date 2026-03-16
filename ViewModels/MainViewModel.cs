@@ -26,7 +26,9 @@ namespace WpfApp1.ViewModels
         private bool _voiceIdEnabled;
         private string _selectedMicrophoneDevice = string.Empty;
         private string _selectedOutputDevice = string.Empty;
-        private bool _greetingOnStartupEnabled;
+        private bool _greetingOnStartupEnabled = true;
+        private bool _localModeEnabled;
+        private string _appDirPath = string.Empty;
         private string _aidiFilePath = string.Empty;
         private string _aidiFileStatus = "No file selected";
         private bool _isAidiFilePathValid = true;
@@ -171,6 +173,24 @@ namespace WpfApp1.ViewModels
             }
         }
 
+        public bool LocalModeEnabled
+        {
+            get => _localModeEnabled;
+            set
+            {
+                if (_localModeEnabled == value) return;
+                _localModeEnabled = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public ObservableCollection<LocalModeSlotViewModel> LocalModeSlots { get; } = new()
+        {
+            new LocalModeSlotViewModel(0),
+            new LocalModeSlotViewModel(1),
+            new LocalModeSlotViewModel(2),
+        };
+
         public string AidiFilePath
         {
             get => _aidiFilePath;
@@ -236,7 +256,15 @@ namespace WpfApp1.ViewModels
             }
         }
 
-        public string AidiVolumeDisplay => $"{AidiVolume}%";
+        public string AidiVolumeDisplay => AidiVolume == AppConfig.DefaultAidiVolume
+            ? $"Normal ({AidiVolume}%)"
+            : $"{AidiVolume}%";
+
+        public string AppDirPath
+        {
+            get => _appDirPath;
+            set { _appDirPath = value; OnPropertyChanged(); }
+        }
 
         public bool IsPushToTalkHotkeySelectorEnabled => PushToTalkEnabled;
 

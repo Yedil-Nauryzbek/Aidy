@@ -73,6 +73,42 @@
                              From="0.25" To="0.42" Duration="0:0:1.25" AutoReverse="True" RepeatBehavior="Forever"/>
             <DoubleAnimation Storyboard.TargetName="NeonShadow" Storyboard.TargetProperty="BlurRadius"
                              From="22" To="34" Duration="0:0:1.25" AutoReverse="True" RepeatBehavior="Forever"/>
+
+            <!-- center disk subtle scale -->
+            <DoubleAnimation Storyboard.TargetName="CenterDiskScale" Storyboard.TargetProperty="ScaleX"
+                             From="1.00" To="1.05" Duration="0:0:1.25" AutoReverse="True" RepeatBehavior="Forever">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="CenterDiskScale" Storyboard.TargetProperty="ScaleY"
+                             From="1.00" To="1.05" Duration="0:0:1.25" AutoReverse="True" RepeatBehavior="Forever">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="CenterGlow" Storyboard.TargetProperty="Opacity"
+                             From="0.0" To="0.30" Duration="0:0:1.25" AutoReverse="True" RepeatBehavior="Forever"/>
+            <DoubleAnimation Storyboard.TargetName="CenterGlow" Storyboard.TargetProperty="BlurRadius"
+                             From="0" To="18" Duration="0:0:1.25" AutoReverse="True" RepeatBehavior="Forever"/>
+        </Storyboard>
+
+        <!-- EMBLEM VAD pulse — started/stopped by C# on voice activity only -->
+        <Storyboard x:Key="SB_Emblem_Active" RepeatBehavior="Forever">
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="EmblemScale" Storyboard.TargetProperty="ScaleX" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0.00" Value="1.00"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.28" Value="1.11"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.50" Value="1.09"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.72" Value="1.13"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:1.00" Value="1.00"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="EmblemScale" Storyboard.TargetProperty="ScaleY" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0.00" Value="1.00"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.28" Value="1.11"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.50" Value="1.09"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.72" Value="1.13"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:1.00" Value="1.00"><EasingDoubleKeyFrame.EasingFunction><SineEase EasingMode="EaseInOut"/></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="EmblemGlow" Storyboard.TargetProperty="Opacity"
+                             From="0.15" To="0.70" Duration="0:0:0.30" AutoReverse="True" RepeatBehavior="Forever"/>
+            <DoubleAnimation Storyboard.TargetName="EmblemGlow" Storyboard.TargetProperty="BlurRadius"
+                             From="8" To="38" Duration="0:0:0.30" AutoReverse="True" RepeatBehavior="Forever"/>
         </Storyboard>
 
         <!-- PROCESSING -->
@@ -339,8 +375,15 @@
                                         BorderThickness="1"
                                         CornerRadius="10"
                                         Margin="0,2,0,0"
-                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ComboBox}}">
-                                    <ScrollViewer SnapsToDevicePixels="True" MaxHeight="200">
+                                        ClipToBounds="True"
+                                        MaxHeight="202"
+                                        MinWidth="{Binding PlacementTarget.ActualWidth, RelativeSource={RelativeSource AncestorType=Popup}}"
+                                        MaxWidth="{Binding PlacementTarget.ActualWidth, RelativeSource={RelativeSource AncestorType=Popup}}">
+                                    <ScrollViewer SnapsToDevicePixels="True"
+                                                  MaxHeight="200"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  ClipToBounds="True">
                                         <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
                                     </ScrollViewer>
                                 </Border>
@@ -575,6 +618,130 @@
                                 <Setter TargetName="Track" Property="BorderBrush" Value="#6BC9FF"/>
                                 <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
                                 <Setter TargetName="Thumb" Property="Margin" Value="0,4,4,4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Shared animated toggle for Settings page -->
+        <Style x:Key="SettingsToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="58"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="SwitchTrack"
+                                Width="58" Height="32"
+                                CornerRadius="16"
+                                BorderThickness="1">
+                            <Border.Background>
+                                <SolidColorBrush Color="#2E3A57"/>
+                            </Border.Background>
+                            <Border.BorderBrush>
+                                <SolidColorBrush Color="#3C4C73"/>
+                            </Border.BorderBrush>
+                            <Grid>
+                                <Ellipse x:Name="SwitchThumb"
+                                         Width="24" Height="24"
+                                         Fill="#F3F6FF"
+                                         HorizontalAlignment="Left"
+                                         VerticalAlignment="Center"
+                                         Margin="4,0,0,0">
+                                    <Ellipse.RenderTransform>
+                                        <TranslateTransform x:Name="ThumbTranslate" X="0"/>
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ColorAnimation Storyboard.TargetName="SwitchTrack"
+                                                            Storyboard.TargetProperty="Background.Color"
+                                                            To="#1E7A57" Duration="0:0:0.3">
+                                                <ColorAnimation.EasingFunction><CubicEase EasingMode="EaseInOut"/></ColorAnimation.EasingFunction>
+                                            </ColorAnimation>
+                                            <ColorAnimation Storyboard.TargetName="SwitchTrack"
+                                                            Storyboard.TargetProperty="BorderBrush.Color"
+                                                            To="#39B987" Duration="0:0:0.3">
+                                                <ColorAnimation.EasingFunction><CubicEase EasingMode="EaseInOut"/></ColorAnimation.EasingFunction>
+                                            </ColorAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="26" Duration="0:0:0.3">
+                                                <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ColorAnimation Storyboard.TargetName="SwitchTrack"
+                                                            Storyboard.TargetProperty="Background.Color"
+                                                            To="#2E3A57" Duration="0:0:0.3">
+                                                <ColorAnimation.EasingFunction><CubicEase EasingMode="EaseInOut"/></ColorAnimation.EasingFunction>
+                                            </ColorAnimation>
+                                            <ColorAnimation Storyboard.TargetName="SwitchTrack"
+                                                            Storyboard.TargetProperty="BorderBrush.Color"
+                                                            To="#3C4C73" Duration="0:0:0.3">
+                                                <ColorAnimation.EasingFunction><CubicEase EasingMode="EaseInOut"/></ColorAnimation.EasingFunction>
+                                            </ColorAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="0" Duration="0:0:0.3">
+                                                <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Blue action button with proper disabled state -->
+        <Style x:Key="SettingsBlueActionButton" TargetType="Button">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="18,0"/>
+            <Setter Property="Background" Value="#1B3D72"/>
+            <Setter Property="BorderBrush" Value="#3A72BF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#EAF3FF"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                CornerRadius="10"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2A5AAA"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A6ABF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#0E1A2B"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1E2B42"/>
+                                <Setter Property="Foreground" Value="#2E4060"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -928,8 +1095,8 @@
                                     <!-- ===== Listening Orb ===== -->
                                     <Grid x:Name="OrbHost"
               HorizontalAlignment="Center"
-              VerticalAlignment="Center"
-              Margin="0,30,0,0">
+              VerticalAlignment="Top"
+              Margin="0,140,0,0">
                                         <Grid.LayoutTransform>
                                             <ScaleTransform x:Name="OrbScale" ScaleX="1" ScaleY="1"/>
                                         </Grid.LayoutTransform>
@@ -996,12 +1163,37 @@
                                             <!-- inner ring (STATIC) -->
                                             <Ellipse Width="310" Height="310" StrokeThickness="7" Stroke="#26FFFFFF"/>
 
-                                            <!-- center disk (STATIC) -->
-                                            <Ellipse Width="270" Height="270" StrokeThickness="1" Stroke="#2EA9C7FF" Fill="#A60B0D18">
+                                            <!-- center disk -->
+                                            <Ellipse x:Name="CenterDisk"
+                                                     Width="270" Height="270"
+                                                     StrokeThickness="1" Stroke="#2EA9C7FF"
+                                                     Fill="#A6101427"
+                                                     RenderTransformOrigin="0.5,0.5">
+                                                <Ellipse.RenderTransform>
+                                                    <ScaleTransform x:Name="CenterDiskScale" ScaleX="1" ScaleY="1"/>
+                                                </Ellipse.RenderTransform>
                                                 <Ellipse.Effect>
-                                                    <DropShadowEffect Color="Black" Opacity="0.35" BlurRadius="28" ShadowDepth="0"/>
+                                                    <DropShadowEffect x:Name="CenterGlow" Color="#6BE7FF" Opacity="0" BlurRadius="0" ShadowDepth="0"/>
                                                 </Ellipse.Effect>
                                             </Ellipse>
+
+                                            <!-- hex-star emblem (LISTENING / COMMAND_LISTENING only) -->
+                                            <Image x:Name="CenterEmblem"
+                                                   Width="248" Height="248"
+                                                   Source="pack://application:,,,/Assets/emblem.png"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Stretch="Uniform"
+                                                   SnapsToDevicePixels="True"
+                                                   Visibility="Collapsed"
+                                                   RenderTransformOrigin="0.5,0.5">
+                                                <Image.RenderTransform>
+                                                    <ScaleTransform x:Name="EmblemScale" ScaleX="1" ScaleY="1"/>
+                                                </Image.RenderTransform>
+                                                <Image.Effect>
+                                                    <DropShadowEffect x:Name="EmblemGlow" Color="#00FFFF" Opacity="0" BlurRadius="0" ShadowDepth="0"/>
+                                                </Image.Effect>
+                                            </Image>
 
                                             <!-- waveform (STATIC) -->
                                             <Grid x:Name="Wave"
@@ -1086,21 +1278,7 @@
                                                     </TextBlock>
                                                 </Canvas>
                                             </Grid>
-                                            <Grid x:Name="ListeningMic"
-          Width="100" Height="118"
-          HorizontalAlignment="Center"
-          VerticalAlignment="Center"
-          Visibility="Collapsed">
-                                                <Grid.Effect>
-                                                    <DropShadowEffect Color="#68FFE8" Opacity="0.38" BlurRadius="14" ShadowDepth="0"/>
-                                                </Grid.Effect>
-                                                <Canvas Width="100" Height="118" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                    <Border Width="40" Height="58" CornerRadius="20" Background="#68FFE8" Canvas.Left="30" Canvas.Top="10"/>
-                                                    <Path Data="M22,62 A28,28 0 0 0 78,62" Stroke="#68FFE8" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
-                                                    <Border Width="10" Height="18" CornerRadius="5" Background="#68FFE8" Canvas.Left="45" Canvas.Top="78"/>
-                                                    <Border Width="50" Height="10" CornerRadius="5" Background="#68FFE8" Canvas.Left="25" Canvas.Top="96"/>
-                                                </Canvas>
-                                            </Grid>
+                                            <!-- ListeningMic removed — emblem logo is used instead -->
                                             <Grid x:Name="SpeakingWave"
           Width="220" Height="86"
           HorizontalAlignment="Center"
@@ -1370,7 +1548,7 @@
                                                     <TextBlock FontSize="18"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimary}">
-                        <Hyperlink NavigateUri="mailto:aidysup@mail.ru?subject=AIDY%20Feedback"
+                        <Hyperlink NavigateUri="https://e.mail.ru/compose/?to=aidysup@mail.ru"
                                    RequestNavigate="Hyperlink_RequestNavigate"
                                    TextDecorations="{x:Null}">
                             <Run Text="aidysup@mail.ru"/>
@@ -1388,7 +1566,7 @@
                                             </Border>
 
                                             <!-- optional: small hint -->
-                                            <TextBlock Text="Click the email to open your default mail app."
+                                            <TextBlock Text="Click the email address to open mail.ru in your browser."
                        FontSize="13"
                        Opacity="0.75"
                        Foreground="{StaticResource TextMuted}"
@@ -1453,45 +1631,9 @@
                                                     </StackPanel>
 
                                                     <ToggleButton Grid.Column="1"
-                              Width="58"
-                              Height="32"
+                              Style="{StaticResource SettingsToggleStyle}"
                               Margin="14,0,0,0"
-                              Cursor="Hand"
-                              Focusable="False"
-                              IsChecked="{Binding AutoStartEnabled, Mode=TwoWay}">
-                                                        <ToggleButton.Template>
-                                                            <ControlTemplate TargetType="ToggleButton">
-                                                                <Border x:Name="SwitchTrack"
-                                Width="58"
-                                Height="32"
-                                CornerRadius="16"
-                                Background="#2E3A57"
-                                BorderBrush="#3C4C73"
-                                BorderThickness="1">
-                                                                    <Grid>
-                                                                        <Ellipse x:Name="SwitchThumb"
-                                     Width="24"
-                                     Height="24"
-                                     Fill="#F3F6FF"
-                                     Margin="4,4,0,4"
-                                     HorizontalAlignment="Left"
-                                     VerticalAlignment="Center"/>
-                                                                    </Grid>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#5F74A8"/>
-                                                                    </Trigger>
-                                                                    <Trigger Property="IsChecked" Value="True">
-                                                                        <Setter TargetName="SwitchTrack" Property="Background" Value="#1E7A57"/>
-                                                                        <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#39B987"/>
-                                                                        <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
-                                                                        <Setter TargetName="SwitchThumb" Property="Margin" Value="0,4,4,4"/>
-                                                                    </Trigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </ToggleButton.Template>
-                                                    </ToggleButton>
+                              IsChecked="{Binding AutoStartEnabled, Mode=TwoWay}"/>
                                                 </Grid>
                                             </Border>
 
@@ -1554,7 +1696,7 @@
                                    FontSize="15"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimary}"/>
-                                                        <TextBlock Text="Play a greeting sound when the computer starts."
+                                                        <TextBlock Text="Play a greeting sound when Aidy starts."
                                    FontSize="12"
                                    Opacity="0.82"
                                    Foreground="{StaticResource TextMuted}"
@@ -1562,45 +1704,9 @@
                                    TextWrapping="Wrap"/>
                                                     </StackPanel>
                                                     <ToggleButton Grid.Column="1"
-                              Width="58"
-                              Height="32"
+                              Style="{StaticResource SettingsToggleStyle}"
                               Margin="12,0,0,0"
-                              Cursor="Hand"
-                              Focusable="False"
-                              IsChecked="{Binding GreetingOnStartupEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                                        <ToggleButton.Template>
-                                                            <ControlTemplate TargetType="ToggleButton">
-                                                                <Border x:Name="SwitchTrack"
-                                Width="58"
-                                Height="32"
-                                CornerRadius="16"
-                                Background="#2E3A57"
-                                BorderBrush="#3C4C73"
-                                BorderThickness="1">
-                                                                    <Grid>
-                                                                        <Ellipse x:Name="SwitchThumb"
-                                     Width="24"
-                                     Height="24"
-                                     Fill="#F3F6FF"
-                                     Margin="4,4,0,4"
-                                     HorizontalAlignment="Left"
-                                     VerticalAlignment="Center"/>
-                                                                    </Grid>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#5F74A8"/>
-                                                                    </Trigger>
-                                                                    <Trigger Property="IsChecked" Value="True">
-                                                                        <Setter TargetName="SwitchTrack" Property="Background" Value="#1E7A57"/>
-                                                                        <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#39B987"/>
-                                                                        <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
-                                                                        <Setter TargetName="SwitchThumb" Property="Margin" Value="0,4,4,4"/>
-                                                                    </Trigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </ToggleButton.Template>
-                                                    </ToggleButton>
+                              IsChecked="{Binding GreetingOnStartupEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                                 </Grid>
                                             </Border>
 
@@ -1699,6 +1805,200 @@
                                                 </Grid>
                                             </Border>
 
+                                            <!-- ═══════════════ LOCAL MODE ═══════════════ -->
+                                            <TextBlock Text="Local Mode"
+                                                       FontSize="16"
+                                                       FontWeight="SemiBold"
+                                                       Opacity="0.9"
+                                                       Foreground="{StaticResource TextMuted}"
+                                                       Margin="0,0,0,14"/>
+
+                                            <Border CornerRadius="16"
+                                                    Background="#141A2B"
+                                                    BorderBrush="#2AFFFFFF"
+                                                    BorderThickness="1"
+                                                    Padding="18"
+                                                    Margin="0,0,0,18">
+                                                <StackPanel>
+
+                                                    <!-- Master toggle row -->
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Local Mode"
+                                                                       FontSize="17" FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource TextPrimary}"/>
+                                                            <TextBlock Text="Assign 3 instant-action slots, no voice required."
+                                                                       FontSize="13" Opacity="0.82"
+                                                                       Foreground="{StaticResource TextMuted}"
+                                                                       Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                        <ToggleButton Grid.Column="1"
+                                                                      Style="{StaticResource SettingsToggleStyle}"
+                                                                      Margin="14,0,0,0"
+                                                                      IsChecked="{Binding LocalModeEnabled, Mode=TwoWay}"/>
+                                                    </Grid>
+
+                                                    <!-- Slots panel (only when Local Mode is ON) -->
+                                                    <StackPanel>
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding LocalModeEnabled}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+
+                                                        <Border Height="1" Background="#22FFFFFF" Margin="0,14,0,14"/>
+
+                                                        <TextBlock Text="Quick Action Slots"
+                                                                   FontSize="13" Opacity="0.9"
+                                                                   Foreground="{StaticResource TextMuted}"
+                                                                   Margin="0,0,0,10"/>
+
+                                                        <ItemsControl ItemsSource="{Binding LocalModeSlots}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Margin="0,0,0,8" CornerRadius="12" Padding="14,11">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Background" Value="#0DFFFFFF"/>
+                                                                                <Setter Property="BorderThickness" Value="1"/>
+                                                                                <Setter Property="BorderBrush" Value="#22FFFFFF"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsEmpty}" Value="False">
+                                                                                        <Setter Property="BorderBrush" Value="#4057F287"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="Auto"/>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="Auto"/>
+                                                                            </Grid.ColumnDefinitions>
+
+                                                                            <!-- Slot badge -->
+                                                                            <Border Grid.Column="0" Width="26" Height="26"
+                                                                                    CornerRadius="7" Background="#1B2740"
+                                                                                    BorderBrush="#2D3A5D" BorderThickness="1"
+                                                                                    Margin="0,0,12,0" VerticalAlignment="Center">
+                                                                                <TextBlock Text="{Binding SlotNumber}"
+                                                                                           HorizontalAlignment="Center"
+                                                                                           VerticalAlignment="Center"
+                                                                                           FontSize="11" FontWeight="SemiBold"
+                                                                                           Foreground="#7A8BA8"/>
+                                                                            </Border>
+
+                                                                            <!-- Slot assign button -->
+                                                                            <Button Grid.Column="1"
+                                                                                    Tag="{Binding Index}"
+                                                                                    Click="LocalModeSlot_Click"
+                                                                                    Background="Transparent"
+                                                                                    BorderThickness="0"
+                                                                                    HorizontalAlignment="Stretch"
+                                                                                    HorizontalContentAlignment="Left"
+                                                                                    Cursor="Hand" Padding="0"
+                                                                                    FocusVisualStyle="{x:Null}">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <ContentPresenter/>
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                                <StackPanel VerticalAlignment="Center">
+                                                                                    <!-- Empty -->
+                                                                                    <TextBlock Text="Click to assign action..."
+                                                                                               FontSize="13" FontStyle="Italic"
+                                                                                               Foreground="#3A4A5E">
+                                                                                        <TextBlock.Style>
+                                                                                            <Style TargetType="TextBlock">
+                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                                <Style.Triggers>
+                                                                                                    <DataTrigger Binding="{Binding IsEmpty}" Value="False">
+                                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                    </DataTrigger>
+                                                                                                </Style.Triggers>
+                                                                                            </Style>
+                                                                                        </TextBlock.Style>
+                                                                                    </TextBlock>
+                                                                                    <!-- Filled -->
+                                                                                    <StackPanel>
+                                                                                        <StackPanel.Style>
+                                                                                            <Style TargetType="StackPanel">
+                                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                <Style.Triggers>
+                                                                                                    <DataTrigger Binding="{Binding IsEmpty}" Value="False">
+                                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                                    </DataTrigger>
+                                                                                                </Style.Triggers>
+                                                                                            </Style>
+                                                                                        </StackPanel.Style>
+                                                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                                                   FontSize="13" FontWeight="SemiBold"
+                                                                                                   Foreground="{StaticResource TextPrimary}"/>
+                                                                                        <TextBlock Text="{Binding ActionTypeDisplay}"
+                                                                                                   FontSize="11" Foreground="#57F287"
+                                                                                                   Margin="0,2,0,0"/>
+                                                                                    </StackPanel>
+                                                                                </StackPanel>
+                                                                            </Button>
+
+                                                                            <!-- Clear button (visible when filled) -->
+                                                                            <Button Grid.Column="2"
+                                                                                    Tag="{Binding Index}"
+                                                                                    Click="LocalModeSlotClear_Click"
+                                                                                    Content="&#x2715;"
+                                                                                    Width="22" Height="22"
+                                                                                    VerticalAlignment="Center"
+                                                                                    Margin="8,0,0,0"
+                                                                                    Cursor="Hand"
+                                                                                    FocusVisualStyle="{x:Null}">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <Border x:Name="Bd" CornerRadius="5" Width="22" Height="22"
+                                                                                                Background="Transparent">
+                                                                                            <TextBlock Text="{TemplateBinding Content}"
+                                                                                                       FontSize="11" Foreground="#4A5A7A"
+                                                                                                       HorizontalAlignment="Center"
+                                                                                                       VerticalAlignment="Center"/>
+                                                                                        </Border>
+                                                                                        <ControlTemplate.Triggers>
+                                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                                <Setter TargetName="Bd" Property="Background" Value="#1A2740"/>
+                                                                                            </Trigger>
+                                                                                        </ControlTemplate.Triggers>
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                                <Button.Style>
+                                                                                    <Style TargetType="Button">
+                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding IsEmpty}" Value="False">
+                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </Button.Style>
+                                                                            </Button>
+
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                            <!-- ══════════════════════════════════════════ -->
+
                                             <TextBlock Text="Voice"
                        FontSize="16"
                        FontWeight="SemiBold"
@@ -1731,45 +2031,9 @@
                                                         </StackPanel>
 
                                                         <ToggleButton Grid.Column="1"
-                              Width="58"
-                              Height="32"
+                              Style="{StaticResource SettingsToggleStyle}"
                               Margin="14,0,0,0"
-                              Cursor="Hand"
-                              Focusable="False"
-                              IsChecked="{Binding PushToTalkEnabled, Mode=TwoWay}">
-                                                            <ToggleButton.Template>
-                                                                <ControlTemplate TargetType="ToggleButton">
-                                                                    <Border x:Name="SwitchTrack"
-                                Width="58"
-                                Height="32"
-                                CornerRadius="16"
-                                Background="#2E3A57"
-                                BorderBrush="#3C4C73"
-                                BorderThickness="1">
-                                                                        <Grid>
-                                                                            <Ellipse x:Name="SwitchThumb"
-                                     Width="24"
-                                     Height="24"
-                                     Fill="#F3F6FF"
-                                     Margin="4,4,0,4"
-                                     HorizontalAlignment="Left"
-                                     VerticalAlignment="Center"/>
-                                                                        </Grid>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#5F74A8"/>
-                                                                        </Trigger>
-                                                                        <Trigger Property="IsChecked" Value="True">
-                                                                            <Setter TargetName="SwitchTrack" Property="Background" Value="#1E7A57"/>
-                                                                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#39B987"/>
-                                                                            <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
-                                                                            <Setter TargetName="SwitchThumb" Property="Margin" Value="0,4,4,4"/>
-                                                                        </Trigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </ToggleButton.Template>
-                                                        </ToggleButton>
+                              IsChecked="{Binding PushToTalkEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                                     </Grid>
 
                                                     <Border CornerRadius="14"
@@ -1802,17 +2066,10 @@
                                                                 </Border>
 
                                                                 <Button Content="{Binding ChangePushToTalkKeyButtonText}"
+                                Style="{StaticResource SettingsBlueActionButton}"
                                 Width="138"
-                                Height="36"
                                 Margin="12,0,0,0"
-                                Click="ChangePushToTalkKey_Click"
-                                Background="#1B3D72"
-                                BorderBrush="#3A72BF"
-                                BorderThickness="1"
-                                Foreground="#EAF3FF"
-                                FontSize="13"
-                                FontWeight="SemiBold"
-                                Cursor="Hand"/>
+                                Click="ChangePushToTalkKey_Click"/>
                                                             </DockPanel>
 
                                                             <TextBlock Text="Press a key now, or press Esc to cancel."
@@ -1867,60 +2124,16 @@
                                                         </StackPanel>
 
                                                         <ToggleButton Grid.Column="1"
-                              Width="58"
-                              Height="32"
+                              Style="{StaticResource SettingsToggleStyle}"
                               Margin="14,0,0,0"
-                              Cursor="Hand"
-                              Focusable="False"
-                              IsChecked="{Binding VoiceIdEnabled, Mode=TwoWay}">
-                                                            <ToggleButton.Template>
-                                                                <ControlTemplate TargetType="ToggleButton">
-                                                                    <Border x:Name="SwitchTrack"
-                                Width="58"
-                                Height="32"
-                                CornerRadius="16"
-                                Background="#2E3A57"
-                                BorderBrush="#3C4C73"
-                                BorderThickness="1">
-                                                                        <Grid>
-                                                                            <Ellipse x:Name="SwitchThumb"
-                                     Width="24"
-                                     Height="24"
-                                     Fill="#F3F6FF"
-                                     Margin="4,4,0,4"
-                                     HorizontalAlignment="Left"
-                                     VerticalAlignment="Center"/>
-                                                                        </Grid>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#5F74A8"/>
-                                                                        </Trigger>
-                                                                        <Trigger Property="IsChecked" Value="True">
-                                                                            <Setter TargetName="SwitchTrack" Property="Background" Value="#1E7A57"/>
-                                                                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#39B987"/>
-                                                                            <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
-                                                                            <Setter TargetName="SwitchThumb" Property="Margin" Value="0,4,4,4"/>
-                                                                        </Trigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </ToggleButton.Template>
-                                                        </ToggleButton>
+                              IsChecked="{Binding VoiceIdEnabled, Mode=TwoWay}"/>
                                                     </Grid>
 
                                                     <Button Content="Enroll Voice"
-                            Height="36"
+                            Style="{StaticResource SettingsBlueActionButton}"
                             Click="EnrollAdminVoice_Click"
                             IsEnabled="{Binding VoiceIdEnabled}"
-                            Background="#1B3D72"
-                            BorderBrush="#3A72BF"
-                            BorderThickness="1"
-                            Foreground="#EAF3FF"
-                            FontSize="13"
-                            FontWeight="SemiBold"
-                            Cursor="Hand"
-                            HorizontalAlignment="Left"
-                            Padding="18,0"/>
+                            HorizontalAlignment="Left"/>
                                                 </StackPanel>
                                             </Border>
                                             </StackPanel>
@@ -1938,6 +2151,67 @@
             </Grid>
             <!-- Grid inside Viewbox -->
         </Viewbox>
+
+        <Grid x:Name="EnrollmentOverlay" Background="#D90B0D18" Visibility="Collapsed" Panel.ZIndex="9000">
+            <Border Width="600" Height="350" Background="#141A2B" CornerRadius="20" BorderBrush="#2EA9C7FF" BorderThickness="1">
+                <Border.Effect>
+                    <DropShadowEffect Color="#6BE7FF" Opacity="0.15" BlurRadius="40" ShadowDepth="0"/>
+                </Border.Effect>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Voice ID Setup" FontFamily="Segoe UI" FontWeight="Bold" FontSize="28" Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+
+                    <!-- Dynamic status: updated from Python via CONTROL:enroll_text -->
+                    <TextBlock x:Name="EnrollmentStatusText"
+                               Text="Listening for voice instructions..."
+                               FontSize="16" Foreground="#A6D2FF"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               MaxWidth="480"
+                               Margin="0,0,0,6"
+                               Opacity="0.9"/>
+
+                    <!-- Phrase counter: e.g. "Фраза 1 из 3" -->
+                    <TextBlock x:Name="EnrollmentProgressText"
+                               Text=""
+                               FontSize="13" Foreground="#6BB8FF"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,26"
+                               Opacity="0.7"/>
+
+                    <Grid Width="80" Height="80" Margin="0,0,0,30">
+                        <Ellipse Fill="#2B4CC3FF" Opacity="0.3" RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1"/>
+                            </Ellipse.RenderTransform>
+                            <Ellipse.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" From="1" To="1.5" Duration="0:0:1" AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="1" To="1.5" Duration="0:0:1" AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.5" To="0" Duration="0:0:1" AutoReverse="True"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Ellipse.Triggers>
+                        </Ellipse>
+                        <Ellipse Fill="#4CC3FF" Width="50" Height="50"/>
+                        <Path Data="M 33,26 C 33,21.5 36.5,18 41,18 C 45.5,18 49,21.5 49,26 L 49,42 C 49,46.5 45.5,50 41,50 C 36.5,50 33,46.5 33,42 Z M 25,42 C 25,50.8 32.2,58 41,58 C 49.8,58 57,50.8 57,42 M 41,58 L 41,68 M 31,68 L 51,68" Stroke="White" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="-23,-15,0,0"/>
+                    </Grid>
+
+                    <Button Content="Cancel" Width="140" Height="40" Background="#FF3B5C" BorderThickness="0" Foreground="White" FontWeight="SemiBold" FontSize="14" Cursor="Hand" Click="CancelEnrollment_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="10">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Grid>
 
         <Grid x:Name="SplashOverlay" Background="#0B0D18" Panel.ZIndex="9999" Visibility="Visible">
             <MediaElement x:Name="SplashVideo"

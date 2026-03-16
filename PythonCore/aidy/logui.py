@@ -4,8 +4,14 @@ from datetime import datetime
 
 UI_MODE = "--ui" in sys.argv
 
+_last_ui_state: str = ""
+
 def ui_state(name: str):
+    global _last_ui_state
     if UI_MODE:
+        if name == _last_ui_state:
+            return
+        _last_ui_state = name
         print(f"STATE:{name}", flush=True)
 
 def ui_command(text: str):
@@ -23,6 +29,9 @@ def ui_study_mode(active: bool):
     if UI_MODE:
         print(f"STUDYMODE:{'on' if active else 'off'}", flush=True)
 
+def ui_local_mode(active: bool):
+    if UI_MODE:
+        print(f"LOCALMODE:{'on' if active else 'off'}", flush=True)
 
 
 LOG_LEVEL = os.environ.get("AIDY_LOG", "INFO").upper()

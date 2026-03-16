@@ -9,6 +9,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="System.DirectoryServices.AccountManagement" Version="8.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Content Include="PythonCore\**\*">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
@@ -39,7 +43,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Remove="Assets\SplashOverlay.mp4" />
+		<None Remove="Assets\SplashOverlay.mp4" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -48,8 +52,9 @@
 
 	<ItemGroup>
 		<Resource Include="Assets\logo.png" />
+		<Resource Include="Assets\emblem.png" />
 		<Content Include="Assets\SplashOverlay.mp4">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 	</ItemGroup>
 

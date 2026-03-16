@@ -365,3 +365,40 @@ close visual studio code,close app
 close steam,close app
 quit steam,close app
 exit steam,close app
+
+local mode,local_mode
+local mode on,local_mode
+enable local mode,local_mode
+turn on local mode,local_mode
+start local mode,local_mode
+local mod,local_mode
+local mold,local_mode
+locale mode,local_mode
+local mode off,local_mode
+disable local mode,local_mode
+turn off local mode,local_mode
+stop local mode,local_mode
+exit local mode,local_mode
+
+mouse up,mouse_up
+mouse down,mouse_down
+mouse left,mouse_left
+mouse right,mouse_right
+move up,mouse_up
+move down,mouse_down
+move left,mouse_left
+move right,mouse_right
+cursor up,mouse_up
+cursor down,mouse_down
+cursor left,mouse_left
+cursor right,mouse_right
+scroll up,scroll_up
+scroll down,scroll_down
+scroll top,scroll_up
+scroll bottom,scroll_down
+click,click
+left click,click
+mouse click,click
+double click,double_click
+double,double_click
+right click,right_click

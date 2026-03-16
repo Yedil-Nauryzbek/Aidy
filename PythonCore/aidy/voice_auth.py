@@ -20,7 +20,7 @@ import sqlite3
 import struct
 import time
 from collections import deque
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Union
 
 import numpy as np
 
@@ -38,9 +38,21 @@ except ImportError:
 # ---------------------------------------------------------------------------
 SAMPLE_RATE = 16000
 
-# Cosine-similarity threshold for accepting a voice match.
-# Lower → more permissive (false accepts), Higher → stricter (false rejects).
-SIMILARITY_THRESHOLD = 0.80
+# Three-tier similarity thresholds for confidence-based matching.
+SIMILARITY_HIGH = 0.72     # High confidence — auto-accept, eligible for rolling update
+SIMILARITY_MEDIUM = 0.62   # Medium confidence — accept with warning
+SIMILARITY_LOW = 0.50      # Below this — reject outright
+
+# Kept for backward compat with any external code referencing the old name.
+SIMILARITY_THRESHOLD = SIMILARITY_MEDIUM
+
+# Enrollment quality gates
+MIN_ENROLLMENT_SNR_DB = 12.0      # minimum signal-to-noise ratio for enrollment audio
+MIN_ENROLLMENT_DURATION_MS = 300  # minimum usable audio per phrase
+MAX_EMBEDDINGS_PER_USER = 10      # cap stored embeddings for rolling update
+
+# Rolling update rate limit (seconds) — at most one update per user per interval.
+_ROLLING_UPDATE_INTERVAL = 60.0
 
 # Intents that require Admin role regardless of everything else.
 ADMIN_ONLY_INTENTS: set[str] = {"shutdown", "restart", "grant_access"}
@@ -192,43 +204,82 @@ def _pcm16_to_float(raw_bytes: bytes) -> np.ndarray:
     return np.array(samples, dtype=np.float32) / 32768.0
 
 
-def _spectral_embedding(raw_bytes: bytes, n_bands: int = 64) -> np.ndarray:
-    """
-    Lightweight fallback embedding: mean log-energy per mel-spaced frequency band.
-    Produces a 64-dimensional vector; good enough for the same-session speaker
-    discrimination but NOT production-grade biometrics.
-    """
+def _estimate_snr_db(raw_bytes: bytes) -> float:
+    """Estimate signal-to-noise ratio in dB from raw PCM-16."""
     wav = _pcm16_to_float(raw_bytes)
-    if len(wav) < 400:
-        return np.zeros(n_bands, dtype=np.float32)
-
+    if len(wav) < 800:
+        return 0.0
     frame_size = 400
     hop = 160
-    frames = []
+    energies = []
     for i in range(0, len(wav) - frame_size, hop):
-        frame = wav[i: i + frame_size] * np.hanning(frame_size)
-        spectrum = np.abs(np.fft.rfft(frame))
-        # Discard very low-energy frames (silence / noise)
-        if spectrum.sum() < 1e-4:
-            continue
-        frames.append(spectrum)
+        frame = wav[i : i + frame_size]
+        energies.append(float(np.mean(frame ** 2)))
+    if not energies:
+        return 0.0
+    energies.sort()
+    n = max(1, len(energies) // 10)
+    noise_energy = float(np.mean(energies[:n]))
+    signal_energy = float(np.mean(energies[-n:]))
+    if noise_energy < 1e-10:
+        return 60.0
+    return 10.0 * np.log10(signal_energy / noise_energy)
 
-    if not frames:
-        return np.zeros(n_bands, dtype=np.float32)
 
-    mean_spectrum = np.mean(frames, axis=0)
-    # Bin into n_bands using logarithmically-spaced indices
-    half = len(mean_spectrum)
+def _bin_spectrum_to_bands(spectrum: np.ndarray, n_bands: int) -> np.ndarray:
+    """Bin a half-spectrum into n_bands log-spaced frequency bands."""
+    half = len(spectrum)
     log_idxs = np.unique(
         np.round(np.logspace(0, np.log10(half), n_bands + 1)).astype(int)
     )
     log_idxs = np.clip(log_idxs, 0, half)
     bands = []
     for a, b in zip(log_idxs[:-1], log_idxs[1:]):
-        seg = mean_spectrum[a:b]
+        seg = spectrum[a:b]
         bands.append(float(seg.mean()) if len(seg) > 0 else 0.0)
+    # Pad or truncate to exactly n_bands
+    while len(bands) < n_bands:
+        bands.append(0.0)
+    return np.array(bands[:n_bands], dtype=np.float32)
 
-    emb = np.array(bands, dtype=np.float32)
+
+def _spectral_embedding(raw_bytes: bytes, n_bands: int = 32) -> np.ndarray:
+    """
+    Enhanced spectral fingerprint: static mel-band energies + delta features.
+    Produces a 64-dimensional vector (32 static + 32 delta).
+    """
+    wav = _pcm16_to_float(raw_bytes)
+    out_dim = n_bands * 2
+    if len(wav) < 400:
+        return np.zeros(out_dim, dtype=np.float32)
+
+    frame_size = 400
+    hop = 160
+    frame_bands = []
+    for i in range(0, len(wav) - frame_size, hop):
+        frame = wav[i : i + frame_size] * np.hanning(frame_size)
+        spectrum = np.abs(np.fft.rfft(frame))
+        if spectrum.sum() < 1e-4:
+            continue
+        bands = _bin_spectrum_to_bands(spectrum, n_bands)
+        frame_bands.append(bands)
+
+    if not frame_bands:
+        return np.zeros(out_dim, dtype=np.float32)
+
+    frame_bands = np.array(frame_bands)  # (N_frames, n_bands)
+
+    # Static features: mean energy per band
+    static = np.mean(frame_bands, axis=0)
+
+    # Delta features: mean of frame-to-frame differences (captures dynamics)
+    if len(frame_bands) > 1:
+        deltas = np.diff(frame_bands, axis=0)
+        delta_mean = np.mean(np.abs(deltas), axis=0)
+    else:
+        delta_mean = np.zeros(n_bands, dtype=np.float32)
+
+    emb = np.concatenate([static, delta_mean]).astype(np.float32)
     norm = float(np.linalg.norm(emb))
     if norm > 1e-8:
         emb /= norm
@@ -245,6 +296,8 @@ class VoiceAuthManager:
     DB_FILE = "voice_profiles.db"
     MIN_AUDIO_BYTES = 3200  # 0.1 s at 16 kHz PCM-16
 
+    _USERS_CACHE_TTL = 5.0  # seconds before reloading active users from DB
+
     def __init__(self, base_dir: str):
         self.base_dir = base_dir
         self.db_path = os.path.join(base_dir, self.DB_FILE)
@@ -254,6 +307,12 @@ class VoiceAuthManager:
         self.last_unknown_embedding: Optional[np.ndarray] = None
         self.last_unknown_ts: float = 0.0
         self._user_count_cache: Optional[int] = None
+        # Persistent connection + user list cache
+        self._conn: Optional[sqlite3.Connection] = None
+        self._active_users_cache: Optional[list] = None
+        self._active_users_cache_ts: float = 0.0
+        # Rolling update rate limiter: {user_id: last_update_timestamp}
+        self._rolling_update_ts: dict[int, float] = {}
         self._init_db()
         self._load_encoder()
 
@@ -271,19 +330,70 @@ class VoiceAuthManager:
             print(f"[VoiceAuth] resemblyzer failed to load ({exc}); using spectral fallback")
             self._encoder = None
 
+    def _get_conn(self) -> sqlite3.Connection:
+        """Return a persistent SQLite connection (created once)."""
+        if self._conn is None:
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._conn.execute("PRAGMA foreign_keys = ON")
+        return self._conn
+
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS voice_users (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    label      TEXT    NOT NULL,
-                    role       TEXT    NOT NULL DEFAULT 'Guest',
-                    embedding  TEXT    NOT NULL,
-                    created_at REAL    NOT NULL,
-                    expires_at REAL
-                )
-            """)
+        conn = self._get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS voice_users (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                label      TEXT    NOT NULL,
+                role       TEXT    NOT NULL DEFAULT 'Guest',
+                embedding  TEXT    NOT NULL DEFAULT '[]',
+                created_at REAL    NOT NULL,
+                expires_at REAL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS voice_embeddings (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES voice_users(id) ON DELETE CASCADE,
+                embedding   TEXT    NOT NULL,
+                snr_db      REAL,
+                duration_ms INTEGER,
+                created_at  REAL    NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ve_user_id
+            ON voice_embeddings(user_id)
+        """)
+        conn.commit()
+        self._migrate_legacy_embeddings()
+
+    def _migrate_legacy_embeddings(self) -> None:
+        """Move single-embedding rows from voice_users into voice_embeddings."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT id, embedding FROM voice_users WHERE embedding != '[]' AND embedding != ''"
+        ).fetchall()
+        migrated = 0
+        for uid, emb_json in rows:
+            try:
+                arr = json.loads(emb_json)
+                if not arr or not isinstance(arr, list) or not isinstance(arr[0], (int, float)):
+                    continue
+            except Exception:
+                continue
+            # Check if already migrated
+            existing = conn.execute(
+                "SELECT COUNT(*) FROM voice_embeddings WHERE user_id = ?", (uid,)
+            ).fetchone()[0]
+            if existing > 0:
+                continue
+            conn.execute(
+                "INSERT INTO voice_embeddings (user_id, embedding, created_at) VALUES (?, ?, ?)",
+                (uid, emb_json, time.time()),
+            )
+            migrated += 1
+        if migrated:
             conn.commit()
+            print(f"[VoiceAuth] Migrated {migrated} legacy embedding(s) to voice_embeddings table")
 
     # ------------------------------------------------------------------
     # Database helpers
@@ -291,60 +401,104 @@ class VoiceAuthManager:
 
     def _invalidate_cache(self) -> None:
         self._user_count_cache = None
+        self._active_users_cache = None
+        self._active_users_cache_ts = 0.0
 
     def has_any_user(self) -> bool:
         if self._user_count_cache is not None:
             return self._user_count_cache > 0
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute("SELECT COUNT(*) FROM voice_users").fetchone()
+        conn = self._get_conn()
+        row = conn.execute("SELECT COUNT(*) FROM voice_users").fetchone()
         count = row[0] if row else 0
         self._user_count_cache = count
         return count > 0
 
     def has_admin(self) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM voice_users WHERE role='Admin'"
-            ).fetchone()
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM voice_users WHERE role='Admin'"
+        ).fetchone()
         return (row[0] if row else 0) > 0
 
     def _load_active_users(self) -> list[dict]:
-        """Return all non-expired user rows from the DB."""
+        """Return all non-expired users with their embedding lists (cached)."""
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT id, label, role, embedding, expires_at "
-                "FROM voice_users "
-                "WHERE expires_at IS NULL OR expires_at > ?",
-                (now,),
-            ).fetchall()
-        users = []
-        for row in rows:
+        if (
+            self._active_users_cache is not None
+            and (now - self._active_users_cache_ts) < self._USERS_CACHE_TTL
+        ):
+            return self._active_users_cache
+
+        conn = self._get_conn()
+        # Load user metadata
+        user_rows = conn.execute(
+            "SELECT id, label, role, expires_at "
+            "FROM voice_users "
+            "WHERE expires_at IS NULL OR expires_at > ?",
+            (now,),
+        ).fetchall()
+
+        if not user_rows:
+            self._active_users_cache = []
+            self._active_users_cache_ts = now
+            return []
+
+        user_ids = [r[0] for r in user_rows]
+        placeholders = ",".join("?" * len(user_ids))
+        emb_rows = conn.execute(
+            f"SELECT user_id, embedding FROM voice_embeddings WHERE user_id IN ({placeholders})",
+            user_ids,
+        ).fetchall()
+
+        # Group embeddings by user_id
+        emb_map: dict[int, list[np.ndarray]] = {}
+        for uid, emb_json in emb_rows:
             try:
-                emb = np.array(json.loads(row[3]), dtype=np.float32)
-                users.append(
-                    {
-                        "id": row[0],
-                        "label": row[1],
-                        "role": row[2],
-                        "embedding": emb,
-                        "expires_at": row[4],
-                    }
-                )
+                arr = np.array(json.loads(emb_json), dtype=np.float32)
+                emb_map.setdefault(uid, []).append(arr)
             except Exception:
                 continue
+
+        users = []
+        for row in user_rows:
+            uid = row[0]
+            embeddings = emb_map.get(uid, [])
+            if not embeddings:
+                continue  # Skip users with no valid embeddings
+            users.append(
+                {
+                    "id": uid,
+                    "label": row[1],
+                    "role": row[2],
+                    "embeddings": embeddings,
+                    "expires_at": row[3],
+                }
+            )
+
+        self._active_users_cache = users
+        self._active_users_cache_ts = now
         return users
 
     def revoke_expired(self) -> int:
         """Purge expired rows; returns number deleted."""
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
-            cur = conn.execute(
-                "DELETE FROM voice_users WHERE expires_at IS NOT NULL AND expires_at <= ?",
-                (now,),
-            )
-            conn.commit()
-            deleted = cur.rowcount
+        conn = self._get_conn()
+        # Get IDs to delete (cascade will remove embeddings)
+        expired_ids = conn.execute(
+            "SELECT id FROM voice_users WHERE expires_at IS NOT NULL AND expires_at <= ?",
+            (now,),
+        ).fetchall()
+        if not expired_ids:
+            return 0
+        id_list = [r[0] for r in expired_ids]
+        placeholders = ",".join("?" * len(id_list))
+        conn.execute(f"DELETE FROM voice_embeddings WHERE user_id IN ({placeholders})", id_list)
+        cur = conn.execute(
+            "DELETE FROM voice_users WHERE expires_at IS NOT NULL AND expires_at <= ?",
+            (now,),
+        )
+        conn.commit()
+        deleted = cur.rowcount
         if deleted:
             self._invalidate_cache()
         return deleted
@@ -360,7 +514,14 @@ class VoiceAuthManager:
             else:
                 mins = max(0, int((exp - time.time()) / 60))
                 exp_str = f"expires in {mins} min"
-            summary.append({"id": u["id"], "label": u["label"], "role": u["role"], "expires": exp_str})
+            n_emb = len(u.get("embeddings", []))
+            summary.append({
+                "id": u["id"],
+                "label": u["label"],
+                "role": u["role"],
+                "expires": exp_str,
+                "embeddings": n_emb,
+            })
         return summary
 
     # ------------------------------------------------------------------
@@ -382,7 +543,7 @@ class VoiceAuthManager:
             except Exception as exc:
                 print(f"[VoiceAuth] resemblyzer embed error ({exc}); falling back")
 
-        # Fallback: lightweight spectral fingerprint (64-dim)
+        # Fallback: enhanced spectral fingerprint (64-dim: 32 static + 32 delta)
         return _spectral_embedding(raw_bytes)
 
     # ------------------------------------------------------------------
@@ -391,28 +552,87 @@ class VoiceAuthManager:
 
     def enroll(
         self,
-        raw_bytes: bytes,
+        audio: Union[bytes, List[bytes]],
         role: str = "Admin",
         label: str = "user",
         expires_at: Optional[float] = None,
-    ) -> bool:
-        """Enroll a new speaker from a raw PCM-16 byte buffer."""
-        emb = self.extract_embedding(raw_bytes)
-        if emb is None:
-            print("[VoiceAuth] enroll: audio too short to extract embedding")
-            return False
-        emb_json = json.dumps(emb.tolist())
-        with sqlite3.connect(self.db_path) as conn:
+    ) -> Tuple[bool, str]:
+        """Enroll a new speaker from audio data.
+
+        Args:
+            audio: Either a single PCM-16 buffer (legacy) or a list of
+                   per-phrase PCM-16 buffers for multi-embedding enrollment.
+
+        Returns:
+            (success, message) tuple with quality feedback.
+        """
+        # Normalize input: single buffer → list of one
+        if isinstance(audio, bytes):
+            segments = [audio]
+        else:
+            segments = list(audio)
+
+        embeddings: list[np.ndarray] = []
+        quality_notes: list[str] = []
+
+        for i, seg in enumerate(segments):
+            duration_ms = len(seg) / (SAMPLE_RATE * 2) * 1000
+            if duration_ms < MIN_ENROLLMENT_DURATION_MS:
+                quality_notes.append(f"Phrase {i+1}: too short ({duration_ms:.0f}ms)")
+                continue
+
+            snr = _estimate_snr_db(seg)
+            if snr < MIN_ENROLLMENT_SNR_DB:
+                quality_notes.append(f"Phrase {i+1}: noisy (SNR {snr:.1f}dB)")
+                # Still try to extract — may be usable
+                emb = self.extract_embedding(seg)
+                if emb is not None:
+                    embeddings.append(emb)
+                continue
+
+            emb = self.extract_embedding(seg)
+            if emb is not None:
+                embeddings.append(emb)
+            else:
+                quality_notes.append(f"Phrase {i+1}: embedding extraction failed")
+
+        min_required = max(1, len(segments) // 2)  # Need at least half
+        if len(embeddings) < min_required:
+            msg = f"Only {len(embeddings)}/{len(segments)} usable phrases. Need at least {min_required}."
+            if quality_notes:
+                msg += " Issues: " + "; ".join(quality_notes)
+            print(f"[VoiceAuth] enroll failed: {msg}")
+            return False, msg
+
+        # Insert user row
+        conn = self._get_conn()
+        now = time.time()
+        cur = conn.execute(
+            "INSERT INTO voice_users (label, role, embedding, created_at, expires_at) "
+            "VALUES (?, ?, '[]', ?, ?)",
+            (label, role, now, expires_at),
+        )
+        user_id = cur.lastrowid
+
+        # Insert individual embeddings
+        for j, emb in enumerate(embeddings):
+            seg = segments[j] if j < len(segments) else segments[-1]
+            snr = _estimate_snr_db(seg)
+            duration_ms = len(seg) / (SAMPLE_RATE * 2) * 1000
             conn.execute(
-                "INSERT INTO voice_users (label, role, embedding, created_at, expires_at) "
+                "INSERT INTO voice_embeddings (user_id, embedding, snr_db, duration_ms, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (label, role, emb_json, time.time(), expires_at),
+                (user_id, json.dumps(emb.tolist()), snr, int(duration_ms), now),
             )
-            conn.commit()
+
+        conn.commit()
         self._invalidate_cache()
         exp_str = "permanent" if expires_at is None else f"until {time.ctime(expires_at)}"
-        print(f"[VoiceAuth] Enrolled '{label}' as {role} ({exp_str})")
-        return True
+        msg = f"Enrolled with {len(embeddings)}/{len(segments)} phrases"
+        if quality_notes:
+            msg += f" ({'; '.join(quality_notes)})"
+        print(f"[VoiceAuth] Enrolled '{label}' as {role} ({exp_str}) — {len(embeddings)} embeddings")
+        return True, msg
 
     # ------------------------------------------------------------------
     # Identification
@@ -420,6 +640,8 @@ class VoiceAuthManager:
 
     @staticmethod
     def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+        if a.shape != b.shape:
+            return 0.0  # Dimension mismatch (e.g., old 64-dim vs new 64-dim)
         na = float(np.linalg.norm(a))
         nb = float(np.linalg.norm(b))
         if na < 1e-8 or nb < 1e-8:
@@ -428,38 +650,105 @@ class VoiceAuthManager:
 
     def identify(
         self, raw_bytes: bytes
-    ) -> Tuple[Optional[str], float, Optional[np.ndarray]]:
+    ) -> Tuple[Optional[str], float, Optional[np.ndarray], str]:
         """
-        Identify the speaker.
+        Identify the speaker using multi-embedding matching.
 
         Returns:
-            (role, best_similarity, embedding)
+            (role, best_similarity, embedding, confidence)
+            confidence is one of: "high", "medium", "low", "none"
             role is None when the voice does not match any enrolled profile.
         """
         emb = self.extract_embedding(raw_bytes)
         if emb is None:
-            return None, 0.0, None
+            return None, 0.0, None, "none"
 
         users = self._load_active_users()
         if not users:
-            return None, 0.0, emb
+            return None, 0.0, emb, "none"
 
         best_sim = 0.0
         best_role: Optional[str] = None
-        for user in users:
-            sim = self._cosine_sim(emb, user["embedding"])
-            if sim > best_sim:
-                best_sim = sim
-                best_role = user["role"]
+        best_user_id: Optional[int] = None
 
-        if best_sim >= SIMILARITY_THRESHOLD:
-            return best_role, best_sim, emb
+        for user in users:
+            # Match against ALL stored embeddings for this user, take the max
+            user_best = 0.0
+            for stored_emb in user["embeddings"]:
+                sim = self._cosine_sim(emb, stored_emb)
+                if sim > user_best:
+                    user_best = sim
+            if user_best > best_sim:
+                best_sim = user_best
+                best_role = user["role"]
+                best_user_id = user["id"]
+
+        # Classify confidence
+        if best_sim >= SIMILARITY_HIGH:
+            confidence = "high"
+        elif best_sim >= SIMILARITY_MEDIUM:
+            confidence = "medium"
+        elif best_sim >= SIMILARITY_LOW:
+            confidence = "low"
+        else:
+            confidence = "none"
+
+        if confidence in ("high", "medium"):
+            # Rolling embedding update on high-confidence matches
+            if confidence == "high" and best_user_id is not None:
+                self._rolling_update(best_user_id, emb)
+            return best_role, best_sim, emb, confidence
 
         # Unknown speaker – stash embedding so Admin can grant access
         self.last_unknown_embedding = emb
         self.last_unknown_ts = time.time()
-        print(f"[VoiceAuth] Unknown speaker (best_sim={best_sim:.3f})")
-        return None, best_sim, emb
+        print(
+            f"[VoiceAuth] Unknown speaker (best_sim={best_sim:.3f}, confidence={confidence})",
+            flush=True,
+        )
+        return None, best_sim, emb, confidence
+
+    # ------------------------------------------------------------------
+    # Rolling embedding update
+    # ------------------------------------------------------------------
+
+    def _rolling_update(self, user_id: int, new_embedding: np.ndarray) -> None:
+        """On high-confidence match, blend new embedding into user profile.
+
+        Keeps up to MAX_EMBEDDINGS_PER_USER embeddings per user.
+        Rate-limited to avoid DB writes on every single command.
+        """
+        now = time.time()
+        last = self._rolling_update_ts.get(user_id, 0.0)
+        if (now - last) < _ROLLING_UPDATE_INTERVAL:
+            return
+
+        self._rolling_update_ts[user_id] = now
+        conn = self._get_conn()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM voice_embeddings WHERE user_id = ?", (user_id,)
+        ).fetchone()[0]
+
+        emb_json = json.dumps(new_embedding.tolist())
+
+        if count < MAX_EMBEDDINGS_PER_USER:
+            conn.execute(
+                "INSERT INTO voice_embeddings (user_id, embedding, created_at) VALUES (?, ?, ?)",
+                (user_id, emb_json, now),
+            )
+        else:
+            # Replace the oldest embedding
+            oldest = conn.execute(
+                "SELECT id FROM voice_embeddings WHERE user_id = ? ORDER BY created_at ASC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if oldest:
+                conn.execute(
+                    "UPDATE voice_embeddings SET embedding = ?, created_at = ? WHERE id = ?",
+                    (emb_json, now, oldest[0]),
+                )
+        conn.commit()
+        self._invalidate_cache()
 
     # ------------------------------------------------------------------
     # Authorization
@@ -475,7 +764,7 @@ class VoiceAuthManager:
             (allowed, role_label, denial_message)
             denial_message is None when access is granted.
         """
-        role, sim, _ = self.identify(raw_bytes)
+        role, sim, _, confidence = self.identify(raw_bytes)
 
         if role is None:
             return (
@@ -533,14 +822,19 @@ class VoiceAuthManager:
             return False
 
         label = f"voice_{int(self.last_unknown_ts)}"
-        emb_json = json.dumps(self.last_unknown_embedding.tolist())
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "INSERT INTO voice_users (label, role, embedding, created_at, expires_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (label, role, emb_json, time.time(), expires_at),
-            )
-            conn.commit()
+        now = time.time()
+        conn = self._get_conn()
+        cur = conn.execute(
+            "INSERT INTO voice_users (label, role, embedding, created_at, expires_at) "
+            "VALUES (?, ?, '[]', ?, ?)",
+            (label, role, now, expires_at),
+        )
+        user_id = cur.lastrowid
+        conn.execute(
+            "INSERT INTO voice_embeddings (user_id, embedding, created_at) VALUES (?, ?, ?)",
+            (user_id, json.dumps(self.last_unknown_embedding.tolist()), now),
+        )
+        conn.commit()
         self._invalidate_cache()
         self.last_unknown_embedding = None
         exp_str = "permanent" if expires_at is None else f"until {time.ctime(expires_at)}"
