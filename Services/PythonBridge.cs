@@ -29,11 +29,12 @@ namespace WpfApp1.Services
         public event Action<string>? CommandHeard;
         public event Action<string, int, int>? TimerChanged;
         public event Action<bool>? StudyModeChanged;
-        public event Action<bool>? LocalModeChanged;
+        public event Action<bool>? CustomModeChanged;
         public event Action<bool>? VoiceActivityChanged;           // from repo
         public event Action? EnrollmentFinished;                    // from yours
         public event Action? EnrollmentStarted;                     // from yours
         public event Action<string, string>? EnrollmentTextChanged; // from yours (statusText, progressText)
+        public event Action<string[]>? VoiceUsersChanged;           // label|role|expires entries
         public event Action<string>? LogLine;
 
         public PythonBridge(string pythonExe, string scriptPath, string workingDir)
@@ -260,9 +261,12 @@ namespace WpfApp1.Services
                     "SPEAKING" => AidyState.Speaking,
                     "CONFIRM" => AidyState.Confirming,
                     "FOLLOWUP" => AidyState.FollowUp,
+                    "GRANT_ROLE" => AidyState.GrantRole,
+                    "GRANT_DURATION" => AidyState.GrantDuration,
                     "EXECUTING" => AidyState.Executing,
                     "SUCCESS" => AidyState.Success,
                     "WARNING" => AidyState.Warning,
+                    "ACCESS_DENIED" => AidyState.AccessDenied,
                     "ERROR" => AidyState.Error,
                     "OFFLINE" => AidyState.Offline,
                     _ => null
@@ -316,13 +320,13 @@ namespace WpfApp1.Services
                 return;
             }
 
-            if (line.StartsWith("LOCALMODE:", StringComparison.OrdinalIgnoreCase))
+            if (line.StartsWith("CUSTOMMODE:", StringComparison.OrdinalIgnoreCase))
             {
-                var payload = line.Substring("LOCALMODE:".Length).Trim().ToLowerInvariant();
+                var payload = line.Substring("CUSTOMMODE:".Length).Trim().ToLowerInvariant();
                 if (payload is "on" or "1" or "true")
-                    LocalModeChanged?.Invoke(true);
+                    CustomModeChanged?.Invoke(true);
                 else if (payload is "off" or "0" or "false")
-                    LocalModeChanged?.Invoke(false);
+                    CustomModeChanged?.Invoke(false);
                 return;
             }
 
@@ -356,6 +360,17 @@ namespace WpfApp1.Services
                 var status = sep >= 0 ? payload.Substring(0, sep).Trim() : payload.Trim();
                 var progress = sep >= 0 ? payload.Substring(sep + 1).Trim() : string.Empty;
                 EnrollmentTextChanged?.Invoke(status, progress);
+                return;
+            }
+
+            if (line.StartsWith("CONTROL:voice_users:", StringComparison.OrdinalIgnoreCase))
+            {
+                // Format: CONTROL:voice_users:label|role|expires;label|role|expires;...
+                var payload = line.Substring("CONTROL:voice_users:".Length).Trim();
+                var entries = string.IsNullOrEmpty(payload)
+                    ? Array.Empty<string>()
+                    : payload.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                VoiceUsersChanged?.Invoke(entries);
                 return;
             }
 

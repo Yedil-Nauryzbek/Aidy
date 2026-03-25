@@ -27,7 +27,7 @@ namespace WpfApp1.ViewModels
         private string _selectedMicrophoneDevice = string.Empty;
         private string _selectedOutputDevice = string.Empty;
         private bool _greetingOnStartupEnabled = true;
-        private bool _localModeEnabled;
+        private bool _customModeEnabled;
         private string _appDirPath = string.Empty;
         private string _aidiFilePath = string.Empty;
         private string _aidiFileStatus = "No file selected";
@@ -36,6 +36,20 @@ namespace WpfApp1.ViewModels
         private bool _isPushToTalkKeyCaptureActive;
         private bool _isWaitingForHotkey;
         private AidyState _currentState = AidyState.Starting;
+
+        // Voice sensitivity
+        private int _vadThreshold = VoiceSensitivityConfig.DefaultVadThreshold;
+        private int _silenceMs = VoiceSensitivityConfig.DefaultSilenceMs;
+        private int _minSpeechMs = VoiceSensitivityConfig.DefaultMinSpeechMs;
+
+        // Mouse control
+        private int _mouseMovePx = MouseControlConfig.DefaultMovePx;
+        private int _mouseScrollClicks = MouseControlConfig.DefaultScrollClicks;
+        private int _mouseScrollStep = MouseControlConfig.DefaultScrollStep;
+
+        // Preferred apps
+        private string _preferredBrowser = string.Empty;
+        private string _preferredMusicApp = string.Empty;
 
         public string StatusText
         {
@@ -127,6 +141,8 @@ namespace WpfApp1.ViewModels
             }
         }
 
+        public ObservableCollection<VoiceUserEntry> VoiceUsers { get; } = new();
+
         public ObservableCollection<string> MicrophoneDevices { get; } = new();
         public ObservableCollection<string> OutputDevices { get; } = new();
 
@@ -173,23 +189,41 @@ namespace WpfApp1.ViewModels
             }
         }
 
-        public bool LocalModeEnabled
+        public bool CustomModeEnabled
         {
-            get => _localModeEnabled;
+            get => _customModeEnabled;
             set
             {
-                if (_localModeEnabled == value) return;
-                _localModeEnabled = value;
+                if (_customModeEnabled == value) return;
+                _customModeEnabled = value;
                 OnPropertyChanged();
             }
         }
 
-        public ObservableCollection<LocalModeSlotViewModel> LocalModeSlots { get; } = new()
+        public const int CustomModeSlotsMin = 3;
+        public const int CustomModeSlotsMax = 5;
+
+        public ObservableCollection<CustomModeSlotViewModel> CustomModeSlots { get; } = new()
         {
-            new LocalModeSlotViewModel(0),
-            new LocalModeSlotViewModel(1),
-            new LocalModeSlotViewModel(2),
+            new CustomModeSlotViewModel(0),
+            new CustomModeSlotViewModel(1),
+            new CustomModeSlotViewModel(2),
         };
+
+        private bool _canAddCustomSlot = true;
+        public bool CanAddCustomSlot
+        {
+            get => _canAddCustomSlot;
+            set
+            {
+                if (_canAddCustomSlot == value) return;
+                _canAddCustomSlot = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public void RefreshCanAddCustomSlot()
+            => CanAddCustomSlot = CustomModeSlots.Count < CustomModeSlotsMax;
 
         public string AidiFilePath
         {
@@ -260,6 +294,153 @@ namespace WpfApp1.ViewModels
             ? $"Normal ({AidiVolume}%)"
             : $"{AidiVolume}%";
 
+        // ── Voice Sensitivity ──────────────────────────────────────
+
+        public int VadThreshold
+        {
+            get => _vadThreshold;
+            set
+            {
+                var clamped = Math.Clamp(value, 50, 500);
+                if (_vadThreshold == clamped) return;
+                _vadThreshold = clamped;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(VadThresholdDisplay));
+            }
+        }
+
+        public string VadThresholdDisplay => VadThreshold == VoiceSensitivityConfig.DefaultVadThreshold
+            ? $"Default ({VadThreshold})"
+            : $"{VadThreshold}";
+
+        public int SilenceMs
+        {
+            get => _silenceMs;
+            set
+            {
+                var clamped = Math.Clamp(value, 200, 2000);
+                if (_silenceMs == clamped) return;
+                _silenceMs = clamped;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(SilenceMsDisplay));
+            }
+        }
+
+        public string SilenceMsDisplay => SilenceMs == VoiceSensitivityConfig.DefaultSilenceMs
+            ? $"Default ({SilenceMs} ms)"
+            : $"{SilenceMs} ms";
+
+        public int MinSpeechMs
+        {
+            get => _minSpeechMs;
+            set
+            {
+                var clamped = Math.Clamp(value, 50, 500);
+                if (_minSpeechMs == clamped) return;
+                _minSpeechMs = clamped;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(MinSpeechMsDisplay));
+            }
+        }
+
+        public string MinSpeechMsDisplay => MinSpeechMs == VoiceSensitivityConfig.DefaultMinSpeechMs
+            ? $"Default ({MinSpeechMs} ms)"
+            : $"{MinSpeechMs} ms";
+
+        // ── Mouse Control ────────────────────────────────────────
+
+        public int MouseMovePx
+        {
+            get => _mouseMovePx;
+            set
+            {
+                var clamped = Math.Clamp(value, 50, 2000);
+                if (_mouseMovePx == clamped) return;
+                _mouseMovePx = clamped;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(MouseMovePxDisplay));
+            }
+        }
+
+        public string MouseMovePxDisplay => MouseMovePx == MouseControlConfig.DefaultMovePx
+            ? $"Default ({MouseMovePx} px)"
+            : $"{MouseMovePx} px";
+
+        public int MouseScrollClicks
+        {
+            get => _mouseScrollClicks;
+            set
+            {
+                var clamped = Math.Clamp(value, 10, 1000);
+                if (_mouseScrollClicks == clamped) return;
+                _mouseScrollClicks = clamped;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(MouseScrollClicksDisplay));
+            }
+        }
+
+        public string MouseScrollClicksDisplay => MouseScrollClicks == MouseControlConfig.DefaultScrollClicks
+            ? $"Default ({MouseScrollClicks})"
+            : $"{MouseScrollClicks}";
+
+        public int MouseScrollStep
+        {
+            get => _mouseScrollStep;
+            set
+            {
+                var clamped = Math.Clamp(value, 1, 100);
+                if (_mouseScrollStep == clamped) return;
+                _mouseScrollStep = clamped;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(MouseScrollStepDisplay));
+            }
+        }
+
+        public string MouseScrollStepDisplay => MouseScrollStep == MouseControlConfig.DefaultScrollStep
+            ? $"Default ({MouseScrollStep})"
+            : $"{MouseScrollStep}";
+
+        public void ResetVoiceSensitivity()
+        {
+            VadThreshold = VoiceSensitivityConfig.DefaultVadThreshold;
+            SilenceMs = VoiceSensitivityConfig.DefaultSilenceMs;
+            MinSpeechMs = VoiceSensitivityConfig.DefaultMinSpeechMs;
+        }
+
+        public void ResetMouseControl()
+        {
+            MouseMovePx = MouseControlConfig.DefaultMovePx;
+            MouseScrollClicks = MouseControlConfig.DefaultScrollClicks;
+            MouseScrollStep = MouseControlConfig.DefaultScrollStep;
+        }
+
+        // ── Preferred Apps ──────────────────────────────────────────
+
+        public ObservableCollection<string> BrowserOptions { get; } = new();
+        public ObservableCollection<string> MusicAppOptions { get; } = new();
+
+        public string PreferredBrowser
+        {
+            get => _preferredBrowser;
+            set
+            {
+                if (_preferredBrowser == value) return;
+                _preferredBrowser = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public string PreferredMusicApp
+        {
+            get => _preferredMusicApp;
+            set
+            {
+                if (_preferredMusicApp == value) return;
+                _preferredMusicApp = value;
+                OnPropertyChanged();
+            }
+        }
+
         public string AppDirPath
         {
             get => _appDirPath;
@@ -309,17 +490,18 @@ namespace WpfApp1.ViewModels
 
         public void AppendLogLine(string line, int maxLines = 1200)
         {
-            LogText = AppendBounded(LogText, line, maxLines);
+            LogText = AppendBounded(LogText, line, maxLines, ref _logLineCount);
         }
 
         public void AppendWakeDebugLine(string line, int maxLines = 320)
         {
-            WakeDebugLog = AppendBounded(WakeDebugLog, line, maxLines);
+            WakeDebugLog = AppendBounded(WakeDebugLog, line, maxLines, ref _wakeDebugLineCount);
         }
 
         public void ClearWakeDebugLog()
         {
             WakeDebugLog = "";
+            _wakeDebugLineCount = 0;
         }
 
         public void ApplyPushToTalkConfig(bool enabled, string? keyName)
@@ -456,7 +638,11 @@ namespace WpfApp1.ViewModels
             return options.FirstOrDefault() ?? string.Empty;
         }
 
-        private static string AppendBounded(string existing, string line, int maxLines)
+        // Backing line counts to avoid re-splitting the entire string every append.
+        private int _logLineCount;
+        private int _wakeDebugLineCount;
+
+        private static string AppendBounded(string existing, string line, int maxLines, ref int lineCount)
         {
             if (string.IsNullOrWhiteSpace(line))
             {
@@ -469,18 +655,31 @@ namespace WpfApp1.ViewModels
                 return existing;
             }
 
-            var combined = string.IsNullOrEmpty(existing)
-                ? normalized
-                : existing + "\n" + normalized;
-
-            var lines = combined.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length <= maxLines)
+            if (string.IsNullOrEmpty(existing))
             {
-                return string.Join('\n', lines);
+                lineCount = 1;
+                return normalized;
             }
 
-            var tail = lines[^maxLines..];
-            return string.Join('\n', tail);
+            lineCount++;
+            var combined = existing + "\n" + normalized;
+
+            if (lineCount <= maxLines)
+            {
+                return combined;
+            }
+
+            // Only trim when we exceed the limit — find the first newline and chop.
+            var idx = combined.IndexOf('\n');
+            if (idx >= 0)
+            {
+                // lineCount stays at maxLines after trim (we added 1, removed 1).
+                lineCount = maxLines;
+                return combined.Substring(idx + 1);
+            }
+
+            lineCount = 1;
+            return combined;
         }
 
         private void UpdateStatusText()
@@ -496,22 +695,58 @@ namespace WpfApp1.ViewModels
                 AidyState.Starting => "STARTING...",
                 AidyState.Idle => "IDLE",
                 AidyState.Listening => "LISTENING...",
-                AidyState.CommandListening => "LISTENING FOR COMMAND...",
+                AidyState.CommandListening => "SAY YOUR COMMAND...",
                 AidyState.Processing => "PROCESSING...",
                 AidyState.Speaking => "SPEAKING...",
                 AidyState.Confirming => "YES OR NO",
                 AidyState.FollowUp => "HOW MUCH? (1-10)",
+                AidyState.GrantRole => "USER OR ADMIN?",
+                AidyState.GrantDuration => "BY HOW MUCH? (1-60)",
                 AidyState.Executing => "EXECUTING...",
                 AidyState.Success => "FINISHED",
                 AidyState.Warning => "WARNING",
+                AidyState.AccessDenied => "ACCESS DENIED",
                 AidyState.Error => "ERROR",
                 AidyState.Offline => "OFFLINE",
                 _ => "IDLE"
             };
         }
 
+        public void UpdateVoiceUsers(string[] entries)
+        {
+            VoiceUsers.Clear();
+            foreach (var entry in entries)
+            {
+                var parts = entry.Split('|');
+                if (parts.Length >= 3)
+                {
+                    VoiceUsers.Add(new VoiceUserEntry
+                    {
+                        Label = parts[0].Trim(),
+                        Role = parts[1].Trim(),
+                        Expires = parts[2].Trim(),
+                    });
+                }
+            }
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public class VoiceUserEntry
+    {
+        public string Label { get; set; } = "";
+        public string Role { get; set; } = "";
+        public string Expires { get; set; } = "";
+
+        public string RoleIcon => Role switch
+        {
+            "Admin" => "\U0001F451",
+            "User" => "\U0001F464",
+            "Guest" => "\u231B",
+            _ => "\u2753"
+        };
     }
 }

@@ -273,10 +273,10 @@ class Aidy:
     WAKE_ACK_GUARD_MS = 12
     WAKE_GREETING_COOLDOWN_S = 0.12
     WAKE_GREETING_MIN_RMS = 1
-    COMMAND_SILENCE_STOP_MS = 360
-    COMMAND_SILENCE_STOP_MS_LEGACY = 420
-    FOLLOWUP_SILENCE_STOP_MS = 340
-    CONFIRM_SILENCE_STOP_MS = 320
+    COMMAND_SILENCE_STOP_MS = 200
+    COMMAND_SILENCE_STOP_MS_LEGACY = 250
+    FOLLOWUP_SILENCE_STOP_MS = 180
+    CONFIRM_SILENCE_STOP_MS = 180
     PTT_PAUSED_TOKEN = "__PTT_PAUSED__"
     _SHORT_PATH_ENABLED = True
 
@@ -1596,13 +1596,19 @@ class Aidy:
             self._wake_log("ack skipped: voice muted")
             ui_state("IDLE")
             return
+
+        # Start embedding extraction in background BEFORE playing audio,
+        # so ML inference overlaps with the wake acknowledgment playback.
+        self._start_embedding_precompute()
+
         ui_state("SPEAKING")
         ack_t0 = time.perf_counter()
         self._wake_log("ack playback")
         played = False
+        # Cap wake ack playback to ~500ms so the SPEAKING state is brief.
+        _WAKE_ACK_MAX_MS = 550
         try:
-            # Fast wake response with full clip to avoid truncated speech.
-            played = bool(self.voice.play_key("wake_fast"))
+            played = bool(self.voice.play_key("wake_fast", max_ms=_WAKE_ACK_MAX_MS))
             if played:
                 self._wake_log("ack source=clip key='wake_fast'")
         except Exception as e:
@@ -1611,7 +1617,7 @@ class Aidy:
         if not played:
             try:
                 self._wake_log("ack fallback source=clip key='wake'")
-                played = bool(self.voice.play_key("wake"))
+                played = bool(self.voice.play_key("wake", max_ms=_WAKE_ACK_MAX_MS))
                 if played:
                     self._wake_log("ack source=clip key='wake'")
             except Exception as e:
@@ -1620,7 +1626,7 @@ class Aidy:
         if not played:
             try:
                 self._wake_log("ack final fallback source=tts")
-                played = bool(self.voice.tts_blocking("Yes."))
+                played = bool(self.voice.tts_blocking("Yes.", timeout_sec=0.55))
                 if played:
                     self._wake_log("ack source=tts text='Yes.'")
             except Exception as e:
@@ -2503,8 +2509,8 @@ class Aidy:
 
     def listen_command_vosk(
         self,
-        max_seconds=6,
-        min_listen_ms=2000,
+        max_seconds=5,
+        min_listen_ms=600,
         ui_state_label="LISTENING",
         use_grammar=True,
         speak_on_empty=True,
@@ -2671,8 +2677,8 @@ class Aidy:
 
     def listen_command_smart(
         self,
-        max_seconds=6,
-        min_listen_ms=2000,
+        max_seconds=5,
+        min_listen_ms=600,
         ui_state_label="LISTENING",
     ):
         text = self.listen_command_vosk(
@@ -2698,8 +2704,8 @@ class Aidy:
         non_action_hits = 0
         for attempt in range(max(1, int(max_attempts))):
             cmd_text = self.listen_command_vosk(
-                max_seconds=(4 if attempt == 0 else 3),
-                min_listen_ms=(420 if attempt == 0 else 320),
+                max_seconds=(3 if attempt == 0 else 2),
+                min_listen_ms=(300 if attempt == 0 else 250),
                 ui_state_label="COMMAND_LISTENING",
                 use_grammar=True,
                 speak_on_empty=False,
@@ -2707,8 +2713,8 @@ class Aidy:
             if not cmd_text:
                 self._cmd_log("post-wake grammar empty -> retry free-form")
                 cmd_text = self.listen_command_vosk(
-                    max_seconds=(3 if attempt == 0 else 2),
-                    min_listen_ms=(320 if attempt == 0 else 260),
+                    max_seconds=(2.5 if attempt == 0 else 1.5),
+                    min_listen_ms=(250 if attempt == 0 else 200),
                     ui_state_label="COMMAND_LISTENING",
                     use_grammar=False,
                     speak_on_empty=False,
@@ -4892,25 +4898,24 @@ class Aidy:
             )
             self.stream.start_stream()
 
-            from .voice_auth import _estimate_snr_db, MIN_ENROLLMENT_SNR_DB
+            from .voice_auth import _estimate_snr_db, MIN_ENROLLMENT_SNR_DB, MIN_ENROLLMENT_SNR_DB_DEGRADED
 
-            # 5 phrases for a richer biometric embedding (one embedding per phrase).
+            # 4 phonetically balanced phrases for a richer biometric embedding.
             # These prompts elicit natural speech; we use FREE-FORM recognition
             # (no grammar) so Vosk can detect ANY speech — we only need audio, not
             # an exact transcript match.
             phrases_to_say = [
                 "my name is admin",
-                "hey aidy open the browser",
-                "turn up the volume please",
+                "hey aidy open the browser please",
                 "set a timer for five minutes",
-                "take a screenshot now",
+                "she had your dark suit in greasy wash water all year",
             ]
             total = len(phrases_to_say)
             audio_segments: list[bytes] = []
 
             print("CONTROL:enroll_text:Preparing...|", flush=True)
-            self.voice.tts_fire_and_forget("Voice ID setup. I will ask you to say five phrases.")
-            time.sleep(2.5)
+            self.voice.tts_fire_and_forget("Voice ID setup. I will ask you to say four phrases.")
+            time.sleep(1.8)
 
             for i, phrase in enumerate(phrases_to_say):
                 progress = f"Phrase {i + 1} of {total}"
@@ -4920,7 +4925,7 @@ class Aidy:
                 for attempt in range(1, max_attempts + 1):
                     print(f"CONTROL:enroll_text:Say: '{phrase}'|{progress}", flush=True)
                     self.voice.tts_fire_and_forget(f"Please say: {phrase}")
-                    time.sleep(1.8)
+                    time.sleep(1.2)
 
                     self._flush_stream_buffer()
                     self._deafen_until = 0.0
@@ -4951,25 +4956,28 @@ class Aidy:
                         audio_data = self._last_audio_buffer
                         if audio_data and len(audio_data) >= 6400:  # at least 0.2s
                             snr = _estimate_snr_db(audio_data)
-                            if snr < MIN_ENROLLMENT_SNR_DB and max_attempts - attempt > 0:
-                                print(f"CONTROL:enroll_text:Noisy (SNR {snr:.0f}dB), try again|{progress}", flush=True)
-                                self.voice.tts_fire_and_forget("A bit noisy, please try again.")
-                                time.sleep(1.5)
-                                continue
+                            if snr < MIN_ENROLLMENT_SNR_DB:
+                                if snr >= MIN_ENROLLMENT_SNR_DB_DEGRADED and attempt >= 2:
+                                    info(f"[ENROLL] Phrase {i+1}: accepted at degraded SNR ({snr:.0f}dB)")
+                                elif max_attempts - attempt > 0:
+                                    print(f"CONTROL:enroll_text:Noisy (SNR {snr:.0f}dB), try again|{progress}", flush=True)
+                                    self.voice.tts_fire_and_forget("A bit noisy, please try again.")
+                                    time.sleep(1.0)
+                                    continue
                             audio_segments.append(audio_data)
                             print(f"CONTROL:enroll_text:✓ Accepted!|{progress}", flush=True)
                             try:
                                 self.voice.play_key("success")
                             except Exception:
                                 pass
-                            time.sleep(1.0)
+                            time.sleep(0.6)
                             captured = True
                             break
 
                     if max_attempts - attempt > 0:
                         print(f"CONTROL:enroll_text:Try again, speak clearly|{progress}", flush=True)
                         self.voice.tts_fire_and_forget("I didn't hear you. Please speak clearly.")
-                        time.sleep(1.5)
+                        time.sleep(1.0)
 
                 if not captured:
                     print("CONTROL:enroll_text:Failed.|", flush=True)
@@ -5017,7 +5025,43 @@ class Aidy:
         finally:
             self._enrollment_in_progress = False
 
-    def _voice_auth_check(self, text: str) -> bool:
+    # ── Embedding precomputation ───────────────────────────────────────
+    # Background thread extracts the speaker embedding while the wake-ack
+    # audio plays, so it's ready by the time _safe_process_command runs.
+    _precomputed_emb_future: "threading.Thread | None" = None
+    _precomputed_emb_result: object = None  # np.ndarray or None
+
+    def _start_embedding_precompute(self) -> None:
+        """Kick off background embedding extraction from the last audio buffer."""
+        if not self.voice_id_enabled or not hasattr(self, "voice_auth"):
+            return
+        audio = getattr(self, "_last_audio_buffer", b"")
+        if not audio or len(audio) < 6400:
+            return
+
+        import threading
+
+        self._precomputed_emb_result = None
+
+        def _extract():
+            try:
+                self._precomputed_emb_result = self.voice_auth.extract_embedding(audio)
+            except Exception:
+                self._precomputed_emb_result = None
+
+        self._precomputed_emb_future = threading.Thread(target=_extract, daemon=True)
+        self._precomputed_emb_future.start()
+
+    def _get_precomputed_embedding(self):
+        """Return the precomputed embedding, waiting if still in progress."""
+        if self._precomputed_emb_future is not None:
+            self._precomputed_emb_future.join(timeout=5.0)
+            self._precomputed_emb_future = None
+        emb = self._precomputed_emb_result
+        self._precomputed_emb_result = None
+        return emb
+
+    def _voice_auth_check(self, text: str, precomputed_emb=None) -> bool:
         """
         Verify that the current speaker is authorised to run the command
         described by *text*.  Plays an "Access denied" response and returns
@@ -5027,7 +5071,8 @@ class Aidy:
         intent_key = " ".join((text or "").strip().lower().split())
 
         allowed, role_label, reason = self.voice_auth.authorize(
-            self._last_audio_buffer, intent=intent_key
+            self._last_audio_buffer, intent=intent_key,
+            precomputed_emb=precomputed_emb,
         )
         if not allowed:
             info(f"[RBAC] blocked role='{role_label}' intent='{intent_key}'")
@@ -5040,7 +5085,7 @@ class Aidy:
         info(f"[RBAC] allowed role='{role_label}' sim OK intent='{intent_key}'")
         return True
 
-    def _voice_auth_grant(self, text: str):
+    def _voice_auth_grant(self, text: str, precomputed_emb=None):
         """Detect and handle grant-access / revoke / list-users voice commands.
 
         Returns:
@@ -5069,7 +5114,7 @@ class Aidy:
         # ── "revoke access" ───────────────────────────────────────────
         if t == "revoke access":
             # Only Admin can revoke
-            role, *_ = self.voice_auth.identify(self._last_audio_buffer)
+            role, *_ = self.voice_auth.identify(self._last_audio_buffer, precomputed_emb=precomputed_emb)
             if role != "Admin":
                 ui_state("SPEAKING")
                 self.voice.tts_blocking("Only an administrator can revoke access.")
@@ -5092,7 +5137,7 @@ class Aidy:
             return None  # Not a grant command
 
         # Verify the speaker is Admin before granting
-        role, *_ = self.voice_auth.identify(self._last_audio_buffer)
+        role, *_ = self.voice_auth.identify(self._last_audio_buffer, precomputed_emb=precomputed_emb)
         if role != "Admin":
             ui_state("SPEAKING")
             self.voice.tts_blocking("Only an administrator can grant access.")
@@ -5146,14 +5191,19 @@ class Aidy:
             self._reset_recognition_after_command()
             return False
 
+        # Extract the speaker embedding ONCE and reuse across all auth
+        # checks.  This eliminates ~200-450ms of redundant ML inference
+        # that previously happened on every grant + RBAC call.
+        precomputed_emb = self._get_precomputed_embedding()
+
         # ── 1. Grant-command detection (before general auth) ─────────────
-        grant_result = self._voice_auth_grant(text)
+        grant_result = self._voice_auth_grant(text, precomputed_emb=precomputed_emb)
         if grant_result is not None:
             self._reset_recognition_after_command()
             return bool(grant_result)
 
         # ── 2. General RBAC check ─────────────────────────────────────────
-        if not self._voice_auth_check(text):
+        if not self._voice_auth_check(text, precomputed_emb=precomputed_emb):
             self._reset_recognition_after_command()
             return False
 

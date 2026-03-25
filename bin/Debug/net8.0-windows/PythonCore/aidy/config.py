@@ -1,4 +1,4 @@
-﻿import os
+import os
 
 _CONFIG_DIR = os.path.abspath(os.path.dirname(__file__))
 _PYTHON_CORE_DIR = os.path.abspath(os.path.join(_CONFIG_DIR, ".."))
@@ -79,6 +79,34 @@ WAKE_KEYWORDS = {
     "ok eighty",
     "a d",
     "id",
+    # Common Vosk hallucinations for "aidy" that are safe (not common English words)
+    "edie",
+    "eadie",
+    "eady",
+    "hey d",
+    "hey de",
+    "hey dee",
+    "a de",
+    "a dee",
+    "eightie",
+    "eighties",
+    "hey eddie",
+    "hey edie",
+    "ok edie",
+    "okay edie",
+    "hi eddie",
+    "hi edie",
+    "hey aid",
+    "hey ade",
+    "aide",
+    "hey aide",
+    "ok aide",
+    "eidi",
+    "heady",
+    "eddy",
+    "hey eddy",
+    "ok eddy",
+    "okay eddy",
     "эйди",
     "эйди ассистент",
     "эйди помощник",
@@ -108,56 +136,56 @@ WAKE_FUZZY_ALIASES = {
     "edi",
     "addy",
     "edy",
+    "edie",
+    "eddy",
+    "eady",
+    "aide",
+    "eidi",
     "эйди",
     "эди",
 }
 
+_STRONG_SINGLE_WAKE = frozenset({
+    "aidy", "ady", "adi", "aidi", "aidyy", "eidy", "edy", "edi",
+    "aiddy", "eddie", "eighty", "edie", "eadie", "eady", "eightie",
+    "eighties", "aide", "eidi", "heady", "eddy", "id",
+    "эйди", "эди",
+})
+_GREETINGS = frozenset({"hey", "hello", "ok", "okay", "hi", "хей", "хэй"})
+# Pre-compute compact (no-space) versions of multi-word wake keywords
+_WAKE_COMPACT = {w.replace(" ", ""): w for w in WAKE_KEYWORDS if " " in w}
+# Pre-filter: only multi-word keywords for substring search
+_WAKE_MULTIWORD = frozenset(w for w in WAKE_KEYWORDS if " " in w)
+
+
 def is_wake_phrase(text: str) -> bool:
     t = (text or "").lower().strip()
     t = " ".join(t.split())
-    if len(t) < 3:
+    if len(t) < 2:
         return False
 
-    strong_single_wake = {
-        "aidy",
-        "ady",
-        "adi",
-        "aidi",
-        "aidyy",
-        "eidy",
-        "edy",
-        "edi",
-        "aiddy",
-        "eddie",
-        "eighty",
-        "эйди",
-        "эди",
-        "эйди",
-    }
-    greetings = {"hey", "hello", "ok", "okay", "hi", "хей", "хэй"}
-
+    # Direct set lookup — O(1)
     if t in WAKE_KEYWORDS:
-        if " " not in t and t not in strong_single_wake:
+        if " " not in t and t not in _STRONG_SINGLE_WAKE:
             return False
         return True
 
+    # Compact (no-space) match against multi-word wake keywords
     compact = t.replace(" ", "")
-    for w in WAKE_KEYWORDS:
-        wc = w.replace(" ", "")
-        if wc and compact == wc:
-            if " " not in w and w not in strong_single_wake:
-                return False
-            return True
+    orig = _WAKE_COMPACT.get(compact)
+    if orig is not None:
+        return True
 
     words = t.split()
-    if len(words) >= 2 and words[0] in greetings and words[1] in strong_single_wake:
+    if len(words) >= 2 and words[0] in _GREETINGS and words[1] in _STRONG_SINGLE_WAKE:
         return True
 
-    if len(words) == 1 and words[0] in strong_single_wake:
+    if len(words) == 1 and words[0] in _STRONG_SINGLE_WAKE:
         return True
 
-    for w in WAKE_KEYWORDS:
-        if " " in w and w in t:
+    # Substring search only for multi-word keywords
+    for w in _WAKE_MULTIWORD:
+        if w in t:
             return True
 
     return False
@@ -170,8 +198,8 @@ WAKE_DETECT_PARTIAL = True
 WAKE_REPLY_DEAFEN_MS = 220
 FRAME_MS = 250
 VAD_START_THRESHOLD = 140
-VAD_SILENCE_MS = 700
-VAD_MIN_SPEECH_MS = 140
+VAD_SILENCE_MS = 400
+VAD_MIN_SPEECH_MS = 100
 
 TIMER_MAX_SECONDS = 12 * 60 * 60
 TIMER_START_PHRASES = {
@@ -286,6 +314,16 @@ STUDY_MODE_STATUS_PHRASES = {
 }
 
 
+MOUSE_COMMAND_PHRASES = {
+    "mouse up", "mouse down", "mouse left", "mouse right",
+    "move up", "move down", "move left", "move right",
+    "cursor up", "cursor down", "cursor left", "cursor right",
+    "scroll up", "scroll down", "scroll top", "scroll bottom",
+    "click", "left click", "mouse click",
+    "double click", "double",
+    "right click", "right",
+}
+
 DANGEROUS_INTENTS = {"shutdown", "restart"}
 
 CONFIRM_YES = {
@@ -370,6 +408,25 @@ UNMUTE_PHRASES = {
     "sound on",
     "turn on sound",
     "turn sound on",
+}
+
+LOCAL_MODE_ON_PHRASES = {
+    "local mode",
+    "local mode on",
+    "enable local mode",
+    "turn on local mode",
+    "start local mode",
+    "local mod",
+    "local mold",
+    "locale mode",
+}
+
+LOCAL_MODE_OFF_PHRASES = {
+    "local mode off",
+    "disable local mode",
+    "turn off local mode",
+    "stop local mode",
+    "exit local mode",
 }
 
 UNDO_LAST_PHRASES = {
@@ -507,5 +564,14 @@ VOICE_RESPONSES = {
     "switch window": "Switching window",
     "open app": "Opening application",
     "close app": "Closing application",
+    "mouse_up": "Moving up",
+    "mouse_down": "Moving down",
+    "mouse_left": "Moving left",
+    "mouse_right": "Moving right",
+    "scroll_up": "Scrolling up",
+    "scroll_down": "Scrolling down",
+    "click": "Click",
+    "double_click": "Double click",
+    "right_click": "Right click",
 }
 

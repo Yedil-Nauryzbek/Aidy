@@ -1,0 +1,3179 @@
+
+11:10:42 POST_WAKE result: 'custom mode'
+11:10:42 EXECUTING command: 'custom mode'
+11:10:42 _safe_process_command received: 'custom mode'
+11:10:42 CUSTOM_MODE matched! Calling process_command...
+11:10:42 process_command ENTERED with text='custom mode'
+11:10:42 process_command t0='custom mode' follow_active=False
+11:10:42 process_command study_intent=None
+11:10:42 process_command: MATCHED custom mode ON
+11:10:42 process_command: skipping TTS, executing slots directly
+11:10:42 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+11:10:42 _execute_all: file exists=True
+11:10:42 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_url', 'target': 'https://youtube.com', 'display_name': 'youtube.com'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+11:10:42 _execute_all: slot 0 executing: open_url|https://youtube.com|youtube.com
+11:12:25 slot done: open_url|https://youtube.com
+11:12:25 _execute_all: slot 0 done
+11:12:25 _execute_all: slot 1 empty, skip
+11:12:25 _execute_all: slot 2 empty, skip
+11:12:25 _execute_all: executed 1 slot(s)
+11:12:25 process_command: slots execution done
+11:12:25 process_command EXCEPTION: [Errno 22] Invalid argument
+11:12:25 process_command traceback: Traceback (most recent call last):
+  File "C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\assistant.py", line 5484, in _safe_process_command
+    success = self.process_command(text)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\assistant.py", line 4498, in process_command
+    ui_state("SUCCESS")
+  File "C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\logui.py", line 15, in ui_state
+    print(f"STATE:{name}", flush=True)
+OSError: [Errno 22] Invalid argument
+
+11:21:56 POST_WAKE result: 'custom mode'
+11:21:56 EXECUTING command: 'custom mode'
+11:21:56 _safe_process_command received: 'custom mode'
+11:21:56 CUSTOM_MODE matched! Calling process_command...
+11:21:56 process_command ENTERED with text='custom mode'
+11:21:56 process_command t0='custom mode' follow_active=False
+11:21:56 process_command study_intent=None
+11:21:56 process_command: MATCHED custom mode ON
+11:21:56 process_command: skipping TTS, executing slots directly
+11:21:56 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+11:21:56 _execute_all: file exists=True
+11:21:56 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_url', 'target': 'https://youtube.com', 'display_name': 'youtube.com'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+11:21:56 _execute_all: slot 0 executing: open_url|https://youtube.com|youtube.com
+11:22:08 slot done: open_url|https://youtube.com
+11:22:08 _execute_all: slot 0 done
+11:22:08 _execute_all: slot 1 empty, skip
+11:22:08 _execute_all: slot 2 empty, skip
+11:22:08 _execute_all: executed 1 slot(s)
+11:22:08 process_command: slots execution done
+11:22:08 process_command returned: True
+11:22:09 slot done: open_url|https://youtube.com
+11:27:37 POST_WAKE result: 'custom mode'
+11:27:37 EXECUTING command: 'custom mode'
+11:27:37 _safe_process_command received: 'custom mode'
+11:27:37 CUSTOM_MODE matched! Calling process_command...
+11:27:37 process_command ENTERED with text='custom mode'
+11:27:37 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+11:27:37 _execute_all: file exists=True
+11:27:37 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_url', 'target': 'https://youtube.com', 'display_name': 'youtube.com'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+11:27:37 _execute_all: slot 0 executing: open_url|https://youtube.com|youtube.com
+11:29:05 slot done: open_url|https://youtube.com
+11:29:05 _execute_all: slot 0 done
+11:29:05 _execute_all: slot 1 empty, skip
+11:29:05 _execute_all: slot 2 empty, skip
+11:29:05 _execute_all: executed 1 slot(s)
+11:29:05 process_command returned: True
+11:35:50 POST_WAKE result: 'lock mode'
+11:35:50 EXECUTING command: 'lock mode'
+11:35:50 _safe_process_command received: 'lock mode'
+11:35:50 process_command ENTERED with text='lock mode'
+11:35:50 process_command t0='lock mode' follow_active=False
+11:35:50 process_command study_intent=None
+11:35:59 POST_WAKE result: 'lock mode'
+11:35:59 EXECUTING command: 'lock mode'
+11:35:59 _safe_process_command received: 'lock mode'
+11:35:59 process_command ENTERED with text='lock mode'
+11:35:59 process_command t0='lock mode' follow_active=False
+11:35:59 process_command study_intent=None
+11:36:08 POST_WAKE result: 'custom mode'
+11:36:08 EXECUTING command: 'custom mode'
+11:36:08 _safe_process_command received: 'custom mode'
+11:36:08 CUSTOM_MODE matched! Calling process_command...
+11:36:08 process_command ENTERED with text='custom mode'
+11:36:08 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+11:36:08 _execute_all: file exists=True
+11:36:08 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_url', 'target': 'https://youtube.com', 'display_name': 'youtube.com'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+11:36:08 _execute_all: slot 0 executing: open_url|https://youtube.com|youtube.com
+11:37:40 slot done: open_url|https://youtube.com
+11:37:40 _execute_all: slot 0 done
+11:37:40 _execute_all: slot 1 empty, skip
+11:37:40 _execute_all: slot 2 empty, skip
+11:37:40 _execute_all: executed 1 slot(s)
+11:37:40 process_command returned: True
+11:39:05 POST_WAKE result: 'custom mode'
+11:39:05 EXECUTING command: 'custom mode'
+11:39:05 _safe_process_command received: 'custom mode'
+11:39:05 CUSTOM_MODE matched! Calling process_command...
+11:39:05 process_command ENTERED with text='custom mode'
+11:39:05 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+11:39:05 _execute_all: file exists=True
+11:39:05 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_url', 'target': 'https://youtube.com', 'display_name': 'youtube.com'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+11:39:05 _execute_all: slot 0 executing: open_url|https://youtube.com|youtube.com
+11:39:06 slot done: open_url|https://youtube.com
+11:39:06 _execute_all: slot 0 done
+11:39:06 _execute_all: slot 1 empty, skip
+11:39:06 _execute_all: slot 2 empty, skip
+11:39:06 _execute_all: executed 1 slot(s)
+11:39:06 process_command returned: True
+11:47:38 POST_WAKE result: 'custom custom'
+11:47:38 EXECUTING command: 'custom custom'
+11:47:38 _safe_process_command received: 'custom custom'
+11:47:38 process_command ENTERED with text='custom custom'
+11:47:38 process_command t0='custom custom' follow_active=False
+11:47:38 process_command study_intent=None
+11:47:47 POST_WAKE result: 'custom mode'
+11:47:47 EXECUTING command: 'custom mode'
+11:47:47 _safe_process_command received: 'custom mode'
+11:47:47 CUSTOM_MODE matched! Calling process_command...
+11:47:47 process_command ENTERED with text='custom mode'
+11:47:47 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+11:47:47 _execute_all: file exists=True
+11:47:47 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_url', 'target': 'https://youtube.com', 'display_name': 'youtube.com'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+11:47:47 _execute_all: slot 0 executing: open_url|https://youtube.com|youtube.com
+11:56:04 slot done: open_url|https://youtube.com
+11:56:04 _execute_all: slot 0 done
+11:56:04 _execute_all: slot 1 empty, skip
+11:56:04 _execute_all: slot 2 empty, skip
+11:56:04 _execute_all: executed 1 slot(s)
+11:56:04 process_command returned: True
+12:05:19 POST_WAKE result: 'open youtube'
+12:05:19 EXECUTING command: 'open youtube'
+12:05:19 _safe_process_command received: 'open youtube'
+12:05:19 process_command ENTERED with text='open youtube'
+12:05:19 process_command t0='open youtube' follow_active=False
+12:05:19 process_command study_intent=None
+12:05:40 POST_WAKE result: 'open steam'
+12:05:40 EXECUTING command: 'open steam'
+12:05:40 _safe_process_command received: 'open steam'
+12:05:40 process_command ENTERED with text='open steam'
+12:05:40 process_command t0='open steam' follow_active=False
+12:05:40 process_command study_intent=None
+12:05:48 POST_WAKE result: 'custom mode'
+12:05:48 EXECUTING command: 'custom mode'
+12:05:48 _safe_process_command received: 'custom mode'
+12:05:48 CUSTOM_MODE matched! Calling process_command...
+12:05:48 process_command ENTERED with text='custom mode'
+12:05:48 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+12:05:48 _execute_all: file exists=True
+12:05:48 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_url', 'target': 'https://youtube.com', 'display_name': 'youtube.com'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+12:05:48 _execute_all: slot 0 executing: open_url|https://youtube.com|youtube.com
+12:05:48 slot done: open_url|https://youtube.com
+12:05:48 _execute_all: slot 0 done
+12:05:48 _execute_all: slot 1 empty, skip
+12:05:48 _execute_all: slot 2 empty, skip
+12:05:48 _execute_all: executed 1 slot(s)
+12:05:48 process_command returned: True
+12:16:58 POST_WAKE result: 'ah'
+12:16:58 EXECUTING command: 'ah'
+12:16:58 _safe_process_command received: 'ah'
+12:17:40 POST_WAKE result: 'open steam'
+12:17:40 EXECUTING command: 'open steam'
+12:17:40 _safe_process_command received: 'open steam'
+12:17:40 process_command ENTERED with text='open steam'
+12:17:40 process_command t0='open steam' follow_active=False
+12:17:40 process_command study_intent=None
+12:17:57 POST_WAKE result: 'None'
+12:18:01 POST_WAKE result: 'None'
+12:18:05 POST_WAKE result: 'None'
+12:18:10 POST_WAKE result: 'None'
+12:18:15 POST_WAKE result: 'None'
+12:18:23 POST_WAKE result: 'None'
+12:18:32 POST_WAKE result: 'robinson'
+12:18:32 EXECUTING command: 'robinson'
+12:18:32 _safe_process_command received: 'robinson'
+12:18:32 process_command ENTERED with text='robinson'
+12:18:32 process_command t0='robinson' follow_active=False
+12:18:32 process_command study_intent=None
+12:30:18 POST_WAKE result: 'None'
+12:30:26 POST_WAKE result: 'None'
+12:30:35 POST_WAKE result: 'None'
+12:30:43 POST_WAKE result: 'None'
+12:30:51 POST_WAKE result: 'None'
+12:31:00 POST_WAKE result: 'dante'
+12:31:00 EXECUTING command: 'dante'
+12:31:00 _safe_process_command received: 'dante'
+12:31:00 process_command ENTERED with text='dante'
+12:31:00 process_command t0='dante' follow_active=False
+12:31:00 process_command study_intent=None
+12:35:10 POST_WAKE result: 'None'
+12:40:28 POST_WAKE result: 'eight'
+12:40:28 EXECUTING command: 'eight'
+12:40:28 _safe_process_command received: 'eight'
+12:40:46 POST_WAKE result: 'None'
+12:41:11 POST_WAKE result: 'None'
+12:45:58 POST_WAKE result: 'stop'
+12:45:58 EXECUTING command: 'stop'
+12:45:58 _safe_process_command received: 'stop'
+12:45:58 process_command ENTERED with text='stop'
+12:45:58 process_command t0='stop' follow_active=False
+12:45:58 process_command study_intent=study_mode_stop
+12:46:20 POST_WAKE result: 'scroll down'
+12:46:20 EXECUTING command: 'scroll down'
+12:46:20 _safe_process_command received: 'scroll down'
+12:46:20 process_command ENTERED with text='scroll down'
+12:46:20 process_command t0='scroll down' follow_active=False
+12:46:20 process_command study_intent=None
+12:46:35 POST_WAKE result: 'scroll down'
+12:46:35 EXECUTING command: 'scroll down'
+12:46:35 _safe_process_command received: 'scroll down'
+12:46:35 process_command ENTERED with text='scroll down'
+12:46:35 process_command t0='scroll down' follow_active=False
+12:46:35 process_command study_intent=None
+12:46:52 POST_WAKE result: 'scroll down'
+12:46:52 EXECUTING command: 'scroll down'
+12:46:52 _safe_process_command received: 'scroll down'
+12:46:52 process_command ENTERED with text='scroll down'
+12:46:52 process_command t0='scroll down' follow_active=False
+12:46:52 process_command study_intent=None
+12:47:22 POST_WAKE result: 'double click'
+12:47:22 EXECUTING command: 'double click'
+12:47:22 _safe_process_command received: 'double click'
+12:47:22 process_command ENTERED with text='double click'
+12:47:22 process_command t0='double click' follow_active=False
+12:47:22 process_command study_intent=None
+12:47:37 POST_WAKE result: 'scroll'
+12:47:37 EXECUTING command: 'scroll'
+12:47:37 _safe_process_command received: 'scroll'
+12:47:37 process_command ENTERED with text='scroll'
+12:47:37 process_command t0='scroll' follow_active=False
+12:47:37 process_command study_intent=None
+12:47:47 POST_WAKE result: 'scroll'
+12:47:47 EXECUTING command: 'scroll'
+12:47:47 _safe_process_command received: 'scroll'
+12:47:47 process_command ENTERED with text='scroll'
+12:47:47 process_command t0='scroll' follow_active=False
+12:47:47 process_command study_intent=None
+12:47:58 POST_WAKE result: 'down'
+12:47:58 EXECUTING command: 'down'
+12:47:58 _safe_process_command received: 'down'
+12:47:58 process_command ENTERED with text='down'
+12:47:58 process_command t0='down' follow_active=False
+12:47:58 process_command study_intent=None
+12:48:08 POST_WAKE result: 'scroll down'
+12:48:08 EXECUTING command: 'scroll down'
+12:48:08 _safe_process_command received: 'scroll down'
+12:48:08 process_command ENTERED with text='scroll down'
+12:48:08 process_command t0='scroll down' follow_active=False
+12:48:08 process_command study_intent=None
+12:48:26 POST_WAKE result: 'scroll down'
+12:48:26 EXECUTING command: 'scroll down'
+12:48:26 _safe_process_command received: 'scroll down'
+12:48:26 process_command ENTERED with text='scroll down'
+12:48:26 process_command t0='scroll down' follow_active=False
+12:48:26 process_command study_intent=None
+12:48:39 POST_WAKE result: 'scroll down'
+12:48:39 EXECUTING command: 'scroll down'
+12:48:39 _safe_process_command received: 'scroll down'
+12:48:39 process_command ENTERED with text='scroll down'
+12:48:39 process_command t0='scroll down' follow_active=False
+12:48:39 process_command study_intent=None
+12:49:14 POST_WAKE result: 'scroll down'
+12:49:14 EXECUTING command: 'scroll down'
+12:49:14 _safe_process_command received: 'scroll down'
+12:49:15 process_command ENTERED with text='scroll down'
+12:49:15 process_command t0='scroll down' follow_active=False
+12:49:15 process_command study_intent=None
+13:01:24 POST_WAKE result: 'custom end'
+13:01:24 EXECUTING command: 'custom end'
+13:01:24 _safe_process_command received: 'custom end'
+13:23:09 POST_WAKE result: 'None'
+13:26:00 POST_WAKE result: 'None'
+13:28:56 POST_WAKE result: 'open yandex music'
+13:28:56 EXECUTING command: 'open yandex music'
+13:28:56 _safe_process_command received: 'open yandex music'
+13:28:56 process_command ENTERED with text='open yandex music'
+13:28:56 process_command t0='open yandex music' follow_active=False
+13:28:56 process_command study_intent=None
+13:29:04 _safe_process_command received: 'one'
+13:29:04 process_command ENTERED with text='one'
+13:29:04 process_command t0='one' follow_active=False
+13:29:04 process_command study_intent=None
+13:29:21 POST_WAKE result: 'music'
+13:29:21 EXECUTING command: 'music'
+13:29:21 _safe_process_command received: 'music'
+13:29:21 process_command ENTERED with text='music'
+13:29:21 process_command t0='music' follow_active=False
+13:29:21 process_command study_intent=None
+13:30:02 POST_WAKE result: 'open'
+13:30:02 EXECUTING command: 'open'
+13:30:02 _safe_process_command received: 'open'
+13:30:02 process_command ENTERED with text='open'
+13:30:02 process_command t0='open' follow_active=False
+13:30:02 process_command study_intent=None
+13:41:19 POST_WAKE result: 'the it's music'
+13:41:19 EXECUTING command: 'the it's music'
+13:41:19 _safe_process_command received: 'the it's music'
+13:41:19 process_command ENTERED with text='the it's music'
+13:41:19 process_command t0='the it's music' follow_active=False
+13:41:19 process_command study_intent=None
+13:42:58 POST_WAKE result: 'yandex music'
+13:42:58 EXECUTING command: 'yandex music'
+13:42:58 _safe_process_command received: 'yandex music'
+13:42:58 process_command ENTERED with text='yandex music'
+13:42:58 process_command t0='yandex music' follow_active=False
+13:42:58 process_command study_intent=None
+13:47:54 POST_WAKE result: 'None'
+15:42:20 POST_WAKE result: 'music'
+15:42:20 EXECUTING command: 'music'
+15:42:20 _safe_process_command received: 'music'
+15:42:20 process_command ENTERED with text='music'
+15:42:20 process_command t0='music' follow_active=False
+15:42:20 process_command study_intent=None
+15:42:20 play_yandex_music check: t0='music' _local_intent='play_yandex_music'
+15:42:31 _safe_process_command received: 'one'
+15:42:31 process_command ENTERED with text='one'
+15:42:31 process_command t0='one' follow_active=False
+15:42:31 process_command study_intent=None
+15:42:31 play_yandex_music check: t0='one' _local_intent='None'
+15:42:42 POST_WAKE result: 'music'
+15:42:42 EXECUTING command: 'music'
+15:42:42 _safe_process_command received: 'music'
+15:42:42 process_command ENTERED with text='music'
+15:42:42 process_command t0='music' follow_active=False
+15:42:42 process_command study_intent=None
+15:42:42 play_yandex_music check: t0='music' _local_intent='play_yandex_music'
+15:42:53 _safe_process_command received: 'them'
+15:42:53 process_command ENTERED with text='them'
+15:42:53 process_command t0='them' follow_active=False
+15:42:53 process_command study_intent=None
+15:43:00 POST_WAKE result: 'the yandex music'
+15:43:00 EXECUTING command: 'the yandex music'
+15:43:00 _safe_process_command received: 'the yandex music'
+15:43:00 process_command ENTERED with text='the yandex music'
+15:43:00 process_command t0='the yandex music' follow_active=False
+15:43:00 process_command study_intent=None
+15:43:00 play_yandex_music check: t0='the yandex music' _local_intent='None'
+15:43:11 POST_WAKE result: 'play yandex'
+15:43:11 EXECUTING command: 'play yandex'
+15:43:11 _safe_process_command received: 'play yandex'
+15:43:11 process_command ENTERED with text='play yandex'
+15:43:11 process_command t0='play yandex' follow_active=False
+15:43:11 process_command study_intent=None
+15:43:11 play_yandex_music check: t0='play yandex' _local_intent='None'
+15:43:24 POST_WAKE result: 'open'
+15:43:24 EXECUTING command: 'open'
+15:43:24 _safe_process_command received: 'open'
+15:43:24 process_command ENTERED with text='open'
+15:43:24 process_command t0='open' follow_active=False
+15:43:24 process_command study_intent=None
+15:43:24 play_yandex_music check: t0='open' _local_intent='None'
+09:07:53 POST_WAKE result: 'custom mode'
+09:07:53 EXECUTING command: 'custom mode'
+09:07:53 _safe_process_command received: 'custom mode'
+09:07:53 CUSTOM_MODE matched! Calling process_command...
+09:07:53 process_command ENTERED with text='custom mode'
+09:07:53 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+09:07:53 _execute_all: file exists=True
+09:07:53 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'function', 'target': 'timer_60', 'display_name': '60 min'}, {'action_type': 'open_app', 'target': 'yandex_music', 'display_name': 'Yandex Music'}, {'action_type': 'close_app', 'target': 'yandex_music', 'display_name': 'Yandex Music'}]}
+09:07:53 _execute_all: slot 0 executing: function|timer_60|60 min
+09:07:54 slot done: function|timer_60
+09:07:54 _execute_all: slot 0 done
+09:07:54 _execute_all: slot 1 executing: open_app|yandex_music|Yandex Music
+09:07:54 slot done: open_app|yandex_music
+09:07:54 _execute_all: slot 1 done
+09:07:54 _execute_all: slot 2 executing: close_app|yandex_music|Yandex Music
+09:07:54 slot done: close_app|yandex_music
+09:07:54 _execute_all: slot 2 done
+09:07:54 _execute_all: executed 3 slot(s)
+09:07:55 process_command returned: True
+09:09:03 POST_WAKE result: 'custom'
+09:09:03 EXECUTING command: 'custom'
+09:09:03 _safe_process_command received: 'custom'
+09:09:19 POST_WAKE result: 'custom mode'
+09:09:19 EXECUTING command: 'custom mode'
+09:09:19 _safe_process_command received: 'custom mode'
+09:09:19 CUSTOM_MODE matched! Calling process_command...
+09:09:19 process_command ENTERED with text='custom mode'
+09:09:19 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+09:09:19 _execute_all: file exists=True
+09:09:19 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'function', 'target': 'timer_60', 'display_name': '60 min'}, {'action_type': 'open_app', 'target': 'yandex_music', 'display_name': 'Yandex Music'}, {'action_type': 'function', 'target': 'volume_up_100', 'display_name': '100%'}]}
+09:09:19 _execute_all: slot 0 executing: function|timer_60|60 min
+09:09:19 slot done: function|timer_60
+09:09:19 _execute_all: slot 0 done
+09:09:19 _execute_all: slot 1 executing: open_app|yandex_music|Yandex Music
+09:09:19 slot done: open_app|yandex_music
+09:09:19 _execute_all: slot 1 done
+09:09:19 _execute_all: slot 2 executing: function|volume_up_100|100%
+09:09:22 slot done: function|volume_up_100
+09:09:22 _execute_all: slot 2 done
+09:09:22 _execute_all: executed 3 slot(s)
+09:09:22 process_command returned: True
+09:09:40 POST_WAKE result: 'nine'
+09:09:40 EXECUTING command: 'nine'
+09:09:40 _safe_process_command received: 'nine'
+09:10:18 POST_WAKE result: 'eight'
+09:10:18 EXECUTING command: 'eight'
+09:10:18 _safe_process_command received: 'eight'
+09:10:30 POST_WAKE result: 'scroll up'
+09:10:30 EXECUTING command: 'scroll up'
+09:10:30 _safe_process_command received: 'scroll up'
+09:11:26 POST_WAKE result: 'scroll down'
+09:11:26 EXECUTING command: 'scroll down'
+09:11:26 _safe_process_command received: 'scroll down'
+09:11:41 POST_WAKE result: 'grant admin that'
+09:11:41 EXECUTING command: 'grant admin that'
+09:11:41 _safe_process_command received: 'grant admin that'
+09:11:50 POST_WAKE result: 'grant admin access for one hour'
+09:11:50 EXECUTING command: 'grant admin access for one hour'
+09:11:50 _safe_process_command received: 'grant admin access for one hour'
+09:12:01 POST_WAKE result: 'scroll down'
+09:12:01 EXECUTING command: 'scroll down'
+09:12:01 _safe_process_command received: 'scroll down'
+09:12:01 process_command ENTERED with text='scroll down'
+09:12:01 process_command t0='scroll down' follow_active=False
+09:12:01 process_command study_intent=None
+09:12:21 POST_WAKE result: 'scroll up'
+09:12:21 EXECUTING command: 'scroll up'
+09:12:21 _safe_process_command received: 'scroll up'
+09:12:21 process_command ENTERED with text='scroll up'
+09:12:21 process_command t0='scroll up' follow_active=False
+09:12:21 process_command study_intent=None
+09:12:35 POST_WAKE result: 'down'
+09:12:35 EXECUTING command: 'down'
+09:12:35 _safe_process_command received: 'down'
+09:12:35 process_command ENTERED with text='down'
+09:12:35 process_command t0='down' follow_active=False
+09:12:35 process_command study_intent=None
+09:12:35 play_yandex_music check: t0='down' _local_intent='None'
+09:12:48 POST_WAKE result: 'scroll down'
+09:12:48 EXECUTING command: 'scroll down'
+09:12:48 _safe_process_command received: 'scroll down'
+09:12:48 process_command ENTERED with text='scroll down'
+09:12:48 process_command t0='scroll down' follow_active=False
+09:12:48 process_command study_intent=None
+09:13:24 POST_WAKE result: 'settings'
+09:13:24 EXECUTING command: 'settings'
+09:13:24 _safe_process_command received: 'settings'
+09:13:24 process_command ENTERED with text='settings'
+09:13:24 process_command t0='settings' follow_active=False
+09:13:24 process_command study_intent=None
+09:13:24 play_yandex_music check: t0='settings' _local_intent='None'
+09:13:57 POST_WAKE result: 'timer'
+09:13:57 EXECUTING command: 'timer'
+09:13:57 _safe_process_command received: 'timer'
+09:13:57 process_command ENTERED with text='timer'
+09:13:57 process_command t0='timer' follow_active=False
+09:13:57 process_command study_intent=None
+09:14:08 _safe_process_command received: 'whatever they were of them into'
+09:14:08 process_command ENTERED with text='whatever they were of them into'
+09:14:08 process_command t0='whatever they were of them into' follow_active=False
+09:14:08 process_command study_intent=None
+09:14:08 play_yandex_music check: t0='whatever they were of them into' _local_intent='None'
+09:14:35 POST_WAKE result: 'timer'
+09:14:35 EXECUTING command: 'timer'
+09:14:35 _safe_process_command received: 'timer'
+09:14:35 process_command ENTERED with text='timer'
+09:14:35 process_command t0='timer' follow_active=False
+09:14:35 process_command study_intent=None
+09:14:45 _safe_process_command received: 'damn'
+09:14:45 process_command ENTERED with text='damn'
+09:14:45 process_command t0='damn' follow_active=False
+09:14:45 process_command study_intent=None
+09:14:45 play_yandex_music check: t0='damn' _local_intent='None'
+09:15:08 POST_WAKE result: 'None'
+09:15:50 POST_WAKE result: 'None'
+09:17:05 POST_WAKE result: 'open steam'
+09:17:05 EXECUTING command: 'open steam'
+09:17:05 _safe_process_command received: 'open steam'
+09:17:05 process_command ENTERED with text='open steam'
+09:17:05 process_command t0='open steam' follow_active=False
+09:17:05 process_command study_intent=None
+09:17:05 play_yandex_music check: t0='open steam' _local_intent='open app'
+09:21:57 POST_WAKE result: 'browser'
+09:21:57 EXECUTING command: 'browser'
+09:21:57 _safe_process_command received: 'browser'
+09:21:57 process_command ENTERED with text='browser'
+09:21:57 process_command t0='browser' follow_active=False
+09:21:57 process_command study_intent=None
+09:21:57 play_yandex_music check: t0='browser' _local_intent='None'
+16:52:53 POST_WAKE result: 'volume up'
+16:52:53 EXECUTING command: 'volume up'
+16:52:53 _safe_process_command received: 'volume up'
+16:52:53 process_command ENTERED with text='volume up'
+16:52:53 process_command t0='volume up' follow_active=False
+16:52:53 process_command study_intent=None
+16:52:53 play_yandex_music check: t0='volume up' _local_intent='volume up'
+16:53:02 _safe_process_command received: 'one'
+16:53:02 process_command ENTERED with text='one'
+16:53:02 process_command t0='one' follow_active=False
+16:53:02 process_command study_intent=None
+16:53:02 play_yandex_music check: t0='one' _local_intent='None'
+16:53:16 POST_WAKE result: 'None'
+16:53:38 POST_WAKE result: 'close yandex'
+16:53:38 EXECUTING command: 'close yandex'
+16:53:38 _safe_process_command received: 'close yandex'
+16:53:38 process_command ENTERED with text='close yandex'
+16:53:38 process_command t0='close yandex' follow_active=False
+16:53:38 process_command study_intent=None
+16:54:40 POST_WAKE result: 'brightness up'
+16:54:40 EXECUTING command: 'brightness up'
+16:54:40 _safe_process_command received: 'brightness up'
+16:54:40 process_command ENTERED with text='brightness up'
+16:54:40 process_command t0='brightness up' follow_active=False
+16:54:40 process_command study_intent=None
+16:54:40 play_yandex_music check: t0='brightness up' _local_intent='brightness up'
+16:54:50 _safe_process_command received: 'one'
+16:54:50 process_command ENTERED with text='one'
+16:54:50 process_command t0='one' follow_active=False
+16:54:50 process_command study_intent=None
+16:54:50 play_yandex_music check: t0='one' _local_intent='None'
+16:55:48 POST_WAKE result: 'None'
+16:58:13 POST_WAKE result: 'shutdown'
+16:58:13 EXECUTING command: 'shutdown'
+16:58:13 _safe_process_command received: 'shutdown'
+16:58:13 process_command ENTERED with text='shutdown'
+16:58:13 process_command t0='shutdown' follow_active=False
+16:58:13 process_command study_intent=None
+17:01:21 POST_WAKE result: 'open some'
+17:01:21 EXECUTING command: 'open some'
+17:01:21 _safe_process_command received: 'open some'
+17:08:04 POST_WAKE result: 'open steam'
+17:08:04 EXECUTING command: 'open steam'
+17:08:04 _safe_process_command received: 'open steam'
+17:08:04 process_command ENTERED with text='open steam'
+17:08:04 process_command t0='open steam' follow_active=False
+17:08:04 process_command study_intent=None
+17:08:04 play_yandex_music check: t0='open steam' _local_intent='open app'
+17:09:37 POST_WAKE result: 'volume up'
+17:09:37 EXECUTING command: 'volume up'
+17:09:37 _safe_process_command received: 'volume up'
+17:10:33 POST_WAKE result: 'open notes up'
+17:10:33 EXECUTING command: 'open notes up'
+17:10:33 _safe_process_command received: 'open notes up'
+17:10:40 POST_WAKE result: 'grant user access'
+17:10:40 EXECUTING command: 'grant user access'
+17:10:40 _safe_process_command received: 'grant user access'
+17:10:49 POST_WAKE result: 'grant user access'
+17:10:49 EXECUTING command: 'grant user access'
+17:10:49 _safe_process_command received: 'grant user access'
+17:10:59 POST_WAKE result: 'grant user access'
+17:10:59 EXECUTING command: 'grant user access'
+17:10:59 _safe_process_command received: 'grant user access'
+17:11:23 POST_WAKE result: 'grant user access'
+17:11:23 EXECUTING command: 'grant user access'
+17:11:23 _safe_process_command received: 'grant user access'
+17:15:32 POST_WAKE result: 'None'
+17:19:03 POST_WAKE result: 'open steam'
+17:19:03 EXECUTING command: 'open steam'
+17:19:03 _safe_process_command received: 'open steam'
+17:19:03 process_command ENTERED with text='open steam'
+17:19:03 process_command t0='open steam' follow_active=False
+17:19:03 process_command study_intent=None
+17:19:03 play_yandex_music check: t0='open steam' _local_intent='open app'
+17:34:43 POST_WAKE result: 'open steam'
+17:34:43 EXECUTING command: 'open steam'
+17:34:43 _safe_process_command received: 'open steam'
+17:34:43 process_command ENTERED with text='open steam'
+17:34:43 process_command t0='open steam' follow_active=False
+17:34:43 process_command study_intent=None
+17:34:43 play_yandex_music check: t0='open steam' _local_intent='open app'
+17:35:01 POST_WAKE result: 'custom'
+17:35:01 EXECUTING command: 'custom'
+17:35:01 _safe_process_command received: 'custom'
+17:35:01 process_command ENTERED with text='custom'
+17:35:01 process_command t0='custom' follow_active=False
+17:35:01 process_command study_intent=None
+17:35:01 play_yandex_music check: t0='custom' _local_intent='None'
+17:35:17 POST_WAKE result: 'close steam'
+17:35:17 EXECUTING command: 'close steam'
+17:35:17 _safe_process_command received: 'close steam'
+17:35:17 process_command ENTERED with text='close steam'
+17:35:17 process_command t0='close steam' follow_active=False
+17:35:17 process_command study_intent=None
+17:35:46 POST_WAKE result: 'grant access'
+17:35:46 EXECUTING command: 'grant access'
+17:35:46 _safe_process_command received: 'grant access'
+17:36:43 POST_WAKE result: 'revoke access'
+17:36:43 EXECUTING command: 'revoke access'
+17:36:43 _safe_process_command received: 'revoke access'
+17:42:28 POST_WAKE result: 'None'
+17:42:45 POST_WAKE result: 'open steam'
+17:42:45 EXECUTING command: 'open steam'
+17:42:45 _safe_process_command received: 'open steam'
+17:42:45 process_command ENTERED with text='open steam'
+17:42:45 process_command t0='open steam' follow_active=False
+17:42:45 process_command study_intent=None
+17:42:45 play_yandex_music check: t0='open steam' _local_intent='open app'
+19:36:48 POST_WAKE result: 'time is editor'
+19:36:48 EXECUTING command: 'time is editor'
+19:36:48 _safe_process_command received: 'time is editor'
+19:36:48 process_command ENTERED with text='time is editor'
+19:36:48 process_command t0='time is editor' follow_active=False
+19:36:48 process_command study_intent=None
+19:36:59 _safe_process_command received: 'roxanne'
+19:36:59 process_command ENTERED with text='roxanne'
+19:36:59 process_command t0='roxanne' follow_active=False
+19:36:59 process_command study_intent=None
+19:36:59 play_yandex_music check: t0='roxanne' _local_intent='None'
+19:38:59 POST_WAKE result: 'increase volume'
+19:38:59 EXECUTING command: 'increase volume'
+19:38:59 _safe_process_command received: 'increase volume'
+19:38:59 process_command ENTERED with text='increase volume'
+19:38:59 process_command t0='increase volume' follow_active=False
+19:38:59 process_command study_intent=None
+19:38:59 play_yandex_music check: t0='increase volume' _local_intent='volume up'
+20:19:59 POST_WAKE result: 'revoke access'
+20:19:59 EXECUTING command: 'revoke access'
+20:19:59 _safe_process_command received: 'revoke access'
+20:32:12 POST_WAKE result: 'revoke access'
+20:32:12 EXECUTING command: 'revoke access'
+20:32:12 _safe_process_command received: 'revoke access'
+20:33:05 POST_WAKE result: 'revoke access'
+20:33:05 EXECUTING command: 'revoke access'
+20:33:05 _safe_process_command received: 'revoke access'
+20:33:29 POST_WAKE result: 'revoke access'
+20:33:29 EXECUTING command: 'revoke access'
+20:33:29 _safe_process_command received: 'revoke access'
+20:41:28 POST_WAKE result: 'revoke access'
+20:41:28 EXECUTING command: 'revoke access'
+20:41:28 _safe_process_command received: 'revoke access'
+20:42:17 POST_WAKE result: 'open steam'
+20:42:17 EXECUTING command: 'open steam'
+20:42:17 _safe_process_command received: 'open steam'
+20:42:34 POST_WAKE result: 'open steam'
+20:42:34 EXECUTING command: 'open steam'
+20:42:34 _safe_process_command received: 'open steam'
+20:42:53 POST_WAKE result: 'grant access'
+20:42:53 EXECUTING command: 'grant access'
+20:42:53 _safe_process_command received: 'grant access'
+20:45:21 POST_WAKE result: 'revoke access'
+20:45:21 EXECUTING command: 'revoke access'
+20:45:21 _safe_process_command received: 'revoke access'
+20:45:32 POST_WAKE result: 'access'
+20:45:32 EXECUTING command: 'access'
+20:45:32 _safe_process_command received: 'access'
+20:45:53 POST_WAKE result: 'revoke access'
+20:45:53 EXECUTING command: 'revoke access'
+20:45:53 _safe_process_command received: 'revoke access'
+20:48:46 POST_WAKE result: 'open some'
+20:48:46 EXECUTING command: 'open some'
+20:48:46 _safe_process_command received: 'open some'
+20:48:55 POST_WAKE result: 'open switch'
+20:48:55 EXECUTING command: 'open switch'
+20:48:55 _safe_process_command received: 'open switch'
+20:49:05 POST_WAKE result: 'open steam'
+20:49:05 EXECUTING command: 'open steam'
+20:49:05 _safe_process_command received: 'open steam'
+20:50:34 POST_WAKE result: 'open close'
+20:50:34 EXECUTING command: 'open close'
+20:50:34 _safe_process_command received: 'open close'
+20:50:34 process_command ENTERED with text='open close'
+20:50:34 process_command t0='open close' follow_active=False
+20:50:34 process_command study_intent=None
+20:50:34 play_yandex_music check: t0='open close' _local_intent='None'
+20:50:48 POST_WAKE result: 'open steam'
+20:50:48 EXECUTING command: 'open steam'
+20:50:48 _safe_process_command received: 'open steam'
+20:50:48 process_command ENTERED with text='open steam'
+20:50:48 process_command t0='open steam' follow_active=False
+20:50:48 process_command study_intent=None
+20:50:48 play_yandex_music check: t0='open steam' _local_intent='open app'
+20:52:44 POST_WAKE result: 'volume up'
+20:52:44 EXECUTING command: 'volume up'
+20:52:44 _safe_process_command received: 'volume up'
+20:52:44 process_command ENTERED with text='volume up'
+20:52:44 process_command t0='volume up' follow_active=False
+20:52:44 process_command study_intent=None
+20:52:44 play_yandex_music check: t0='volume up' _local_intent='volume up'
+20:52:54 _safe_process_command received: 'fife'
+20:52:54 process_command ENTERED with text='fife'
+20:52:54 process_command t0='fife' follow_active=False
+20:52:54 process_command study_intent=None
+20:52:54 play_yandex_music check: t0='fife' _local_intent='None'
+20:53:06 POST_WAKE result: 'open steam'
+20:53:06 EXECUTING command: 'open steam'
+20:53:06 _safe_process_command received: 'open steam'
+20:53:06 process_command ENTERED with text='open steam'
+20:53:06 process_command t0='open steam' follow_active=False
+20:53:06 process_command study_intent=None
+20:53:06 play_yandex_music check: t0='open steam' _local_intent='open app'
+20:53:31 POST_WAKE result: 'open steam'
+20:53:31 EXECUTING command: 'open steam'
+20:53:31 _safe_process_command received: 'open steam'
+20:53:31 process_command ENTERED with text='open steam'
+20:53:31 process_command t0='open steam' follow_active=False
+20:53:31 process_command study_intent=None
+20:53:31 play_yandex_music check: t0='open steam' _local_intent='open app'
+20:54:10 POST_WAKE result: 'open steam'
+20:54:10 EXECUTING command: 'open steam'
+20:54:10 _safe_process_command received: 'open steam'
+20:54:10 process_command ENTERED with text='open steam'
+20:54:10 process_command t0='open steam' follow_active=False
+20:54:10 process_command study_intent=None
+20:54:10 play_yandex_music check: t0='open steam' _local_intent='open app'
+11:56:12 POST_WAKE result: 'None'
+12:19:39 POST_WAKE result: 'and i'
+12:19:39 EXECUTING command: 'and i'
+12:19:39 _safe_process_command received: 'and i'
+14:04:38 POST_WAKE result: 'esteem'
+14:04:38 EXECUTING command: 'esteem'
+14:04:38 _safe_process_command received: 'esteem'
+14:04:50 POST_WAKE result: 'open steam'
+14:04:50 EXECUTING command: 'open steam'
+14:04:50 _safe_process_command received: 'open steam'
+14:04:57 POST_WAKE result: 'grant set grant access'
+14:04:57 EXECUTING command: 'grant set grant access'
+14:04:57 _safe_process_command received: 'grant set grant access'
+14:05:03 POST_WAKE result: 'grant access'
+14:05:03 EXECUTING command: 'grant access'
+14:05:03 _safe_process_command received: 'grant access'
+14:05:49 POST_WAKE result: 'revoke access'
+14:05:49 EXECUTING command: 'revoke access'
+14:05:49 _safe_process_command received: 'revoke access'
+14:06:01 POST_WAKE result: 'revoke access'
+14:06:01 EXECUTING command: 'revoke access'
+14:06:01 _safe_process_command received: 'revoke access'
+14:06:14 POST_WAKE result: 'open'
+14:06:14 EXECUTING command: 'open'
+14:06:14 _safe_process_command received: 'open'
+14:06:14 process_command ENTERED with text='open'
+14:06:14 process_command t0='open' follow_active=False
+14:06:14 process_command study_intent=None
+14:06:14 play_yandex_music check: t0='open' _local_intent='None'
+14:06:28 POST_WAKE result: 'open steam'
+14:06:28 EXECUTING command: 'open steam'
+14:06:28 _safe_process_command received: 'open steam'
+14:06:28 process_command ENTERED with text='open steam'
+14:06:28 process_command t0='open steam' follow_active=False
+14:06:28 process_command study_intent=None
+14:06:28 play_yandex_music check: t0='open steam' _local_intent='open app'
+14:07:30 POST_WAKE result: 'open discord'
+14:07:30 EXECUTING command: 'open discord'
+14:07:30 _safe_process_command received: 'open discord'
+14:07:30 process_command ENTERED with text='open discord'
+14:07:30 process_command t0='open discord' follow_active=False
+14:07:30 process_command study_intent=None
+14:07:30 play_yandex_music check: t0='open discord' _local_intent='open app'
+14:07:41 POST_WAKE result: 'go again'
+14:07:41 EXECUTING command: 'go again'
+14:07:41 _safe_process_command received: 'go again'
+14:07:41 process_command ENTERED with text='go again'
+14:07:41 process_command t0='go again' follow_active=False
+14:07:41 process_command study_intent=None
+14:07:41 play_yandex_music check: t0='go again' _local_intent='None'
+14:07:46 POST_WAKE result: 'revoke access'
+14:07:46 EXECUTING command: 'revoke access'
+14:07:46 _safe_process_command received: 'revoke access'
+22:15:43 POST_WAKE result: 'open steam'
+22:15:43 EXECUTING command: 'open steam'
+22:15:43 _safe_process_command received: 'open steam'
+22:15:43 process_command ENTERED with text='open steam'
+22:15:43 process_command t0='open steam' follow_active=False
+22:15:43 process_command study_intent=None
+22:15:43 play_yandex_music check: t0='open steam' _local_intent='open app'
+22:15:51 POST_WAKE result: 'open discord'
+22:15:51 EXECUTING command: 'open discord'
+22:15:51 _safe_process_command received: 'open discord'
+22:15:51 process_command ENTERED with text='open discord'
+22:15:51 process_command t0='open discord' follow_active=False
+22:15:51 process_command study_intent=None
+22:15:51 play_yandex_music check: t0='open discord' _local_intent='open app'
+22:19:18 POST_WAKE result: 'go'
+22:19:18 EXECUTING command: 'go'
+22:19:18 _safe_process_command received: 'go'
+22:19:18 process_command ENTERED with text='go'
+22:19:18 process_command t0='go' follow_active=False
+22:19:18 process_command study_intent=None
+22:19:18 play_yandex_music check: t0='go' _local_intent='None'
+22:19:31 POST_WAKE result: 'open yandex'
+22:19:31 EXECUTING command: 'open yandex'
+22:19:31 _safe_process_command received: 'open yandex'
+22:19:31 process_command ENTERED with text='open yandex'
+22:19:31 process_command t0='open yandex' follow_active=False
+22:19:31 process_command study_intent=None
+22:19:31 play_yandex_music check: t0='open yandex' _local_intent='open app'
+22:46:43 POST_WAKE result: 'personal mode'
+22:46:43 EXECUTING command: 'personal mode'
+22:46:43 _safe_process_command received: 'personal mode'
+22:46:43 CUSTOM_MODE matched! Calling process_command...
+22:46:43 process_command ENTERED with text='personal mode'
+22:46:43 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+22:46:43 _execute_all: file exists=True
+22:46:43 _execute_all: found 3 slots, cm={'enabled': False, 'slots': [{'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+22:46:43 _execute_all: slot 0 empty, skip
+22:46:43 _execute_all: slot 1 empty, skip
+22:46:43 _execute_all: slot 2 empty, skip
+22:46:43 _execute_all: executed 0 slot(s)
+22:46:43 process_command returned: True
+22:46:58 POST_WAKE result: 'personal mode'
+22:46:58 EXECUTING command: 'personal mode'
+22:46:58 _safe_process_command received: 'personal mode'
+22:46:58 CUSTOM_MODE matched! Calling process_command...
+22:46:58 process_command ENTERED with text='personal mode'
+22:46:58 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+22:46:58 _execute_all: file exists=True
+22:46:58 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+22:46:58 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+22:46:58 slot done: open_app|yandex_browser
+22:46:58 _execute_all: slot 0 done
+22:46:58 _execute_all: slot 1 empty, skip
+22:46:58 _execute_all: slot 2 empty, skip
+22:46:58 _execute_all: executed 1 slot(s)
+22:46:58 process_command returned: True
+22:47:13 POST_WAKE result: 'personal mode'
+22:47:13 EXECUTING command: 'personal mode'
+22:47:13 _safe_process_command received: 'personal mode'
+22:47:13 CUSTOM_MODE matched! Calling process_command...
+22:47:13 process_command ENTERED with text='personal mode'
+22:47:13 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+22:47:13 _execute_all: file exists=True
+22:47:13 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+22:47:13 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+22:47:13 slot done: open_app|yandex_browser
+22:47:13 _execute_all: slot 0 done
+22:47:13 _execute_all: slot 1 empty, skip
+22:47:13 _execute_all: slot 2 empty, skip
+22:47:13 _execute_all: executed 1 slot(s)
+22:47:13 process_command returned: True
+22:49:32 POST_WAKE result: 'None'
+23:00:51 POST_WAKE result: 'open browser'
+23:00:51 EXECUTING command: 'open browser'
+23:00:51 _safe_process_command received: 'open browser'
+23:00:51 process_command ENTERED with text='open browser'
+23:00:51 process_command t0='open browser' follow_active=False
+23:00:51 process_command study_intent=None
+23:02:24 POST_WAKE result: 'opera browser'
+23:02:24 EXECUTING command: 'opera browser'
+23:02:24 _safe_process_command received: 'opera browser'
+23:02:24 process_command ENTERED with text='opera browser'
+23:02:24 process_command t0='opera browser' follow_active=False
+23:02:24 process_command study_intent=None
+23:03:07 POST_WAKE result: 'opera browser'
+23:03:07 EXECUTING command: 'opera browser'
+23:03:07 _safe_process_command received: 'opera browser'
+23:03:27 POST_WAKE result: 'open browser'
+23:03:27 EXECUTING command: 'open browser'
+23:03:27 _safe_process_command received: 'open browser'
+23:05:05 POST_WAKE result: 'opera browser'
+23:05:05 EXECUTING command: 'opera browser'
+23:05:05 _safe_process_command received: 'opera browser'
+23:05:13 POST_WAKE result: 'browser'
+23:05:13 EXECUTING command: 'browser'
+23:05:13 _safe_process_command received: 'browser'
+23:06:01 POST_WAKE result: 'open browser'
+23:06:01 EXECUTING command: 'open browser'
+23:06:01 _safe_process_command received: 'open browser'
+09:40:55 POST_WAKE result: 'close active just'
+09:40:55 EXECUTING command: 'close active just'
+09:40:55 _safe_process_command received: 'close active just'
+09:40:55 process_command ENTERED with text='close active just'
+09:40:55 process_command t0='close active just' follow_active=False
+09:40:55 process_command study_intent=None
+09:42:57 POST_WAKE result: 'None'
+09:51:19 POST_WAKE result: 'many phone'
+09:51:19 EXECUTING command: 'many phone'
+09:51:19 _safe_process_command received: 'many phone'
+09:53:09 POST_WAKE result: 'all'
+09:53:09 EXECUTING command: 'all'
+09:53:09 _safe_process_command received: 'all'
+09:53:17 POST_WAKE result: 'cancel settings'
+09:53:17 EXECUTING command: 'cancel settings'
+09:53:17 _safe_process_command received: 'cancel settings'
+09:56:01 POST_WAKE result: 'the opera'
+09:56:01 EXECUTING command: 'the opera'
+09:56:01 _safe_process_command received: 'the opera'
+09:56:07 POST_WAKE result: 'open browser'
+09:56:07 EXECUTING command: 'open browser'
+09:56:07 _safe_process_command received: 'open browser'
+09:56:07 process_command ENTERED with text='open browser'
+09:56:07 process_command t0='open browser' follow_active=False
+09:56:07 process_command study_intent=None
+09:56:37 POST_WAKE result: 'custom mode'
+09:56:37 EXECUTING command: 'custom mode'
+09:56:37 _safe_process_command received: 'custom mode'
+09:56:37 CUSTOM_MODE matched! Calling process_command...
+09:56:37 process_command ENTERED with text='custom mode'
+09:56:37 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+09:56:37 _execute_all: file exists=True
+09:56:37 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+09:56:37 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+09:56:37 slot done: open_app|yandex_browser
+09:56:37 _execute_all: slot 0 done
+09:56:37 _execute_all: slot 1 empty, skip
+09:56:37 _execute_all: slot 2 empty, skip
+09:56:37 _execute_all: executed 1 slot(s)
+09:56:37 process_command returned: True
+09:57:09 POST_WAKE result: 'opera browser'
+09:57:09 EXECUTING command: 'opera browser'
+09:57:09 _safe_process_command received: 'opera browser'
+09:57:17 POST_WAKE result: 'open browser'
+09:57:17 EXECUTING command: 'open browser'
+09:57:17 _safe_process_command received: 'open browser'
+09:57:17 process_command ENTERED with text='open browser'
+09:57:17 process_command t0='open browser' follow_active=False
+09:57:17 process_command study_intent=None
+10:02:05 POST_WAKE result: 'open browser'
+10:02:05 EXECUTING command: 'open browser'
+10:02:05 _safe_process_command received: 'open browser'
+10:02:05 process_command ENTERED with text='open browser'
+10:02:05 process_command t0='open browser' follow_active=False
+10:02:05 process_command study_intent=None
+10:02:35 POST_WAKE result: 'open steam'
+10:02:35 EXECUTING command: 'open steam'
+10:02:35 _safe_process_command received: 'open steam'
+10:02:35 process_command ENTERED with text='open steam'
+10:02:35 process_command t0='open steam' follow_active=False
+10:02:35 process_command study_intent=None
+10:05:13 POST_WAKE result: 'grant access'
+10:05:13 EXECUTING command: 'grant access'
+10:05:13 _safe_process_command received: 'grant access'
+10:20:39 POST_WAKE result: 'open browser'
+10:20:39 EXECUTING command: 'open browser'
+10:20:39 _safe_process_command received: 'open browser'
+10:20:39 process_command ENTERED with text='open browser'
+10:20:39 process_command t0='open browser' follow_active=False
+10:20:39 process_command study_intent=None
+10:21:03 POST_WAKE result: 'open steam'
+10:21:03 EXECUTING command: 'open steam'
+10:21:03 _safe_process_command received: 'open steam'
+10:21:03 process_command ENTERED with text='open steam'
+10:21:03 process_command t0='open steam' follow_active=False
+10:21:03 process_command study_intent=None
+10:37:56 POST_WAKE result: 'None'
+10:38:17 POST_WAKE result: 'open browser'
+10:38:17 EXECUTING command: 'open browser'
+10:38:17 _safe_process_command received: 'open browser'
+10:38:58 POST_WAKE result: 'open browser'
+10:38:58 EXECUTING command: 'open browser'
+10:38:58 _safe_process_command received: 'open browser'
+10:39:04 POST_WAKE result: 'open browser'
+10:39:04 EXECUTING command: 'open browser'
+10:39:04 _safe_process_command received: 'open browser'
+10:40:57 POST_WAKE result: 'open browser'
+10:40:57 EXECUTING command: 'open browser'
+10:40:57 _safe_process_command received: 'open browser'
+10:41:23 POST_WAKE result: 'open steam'
+10:41:23 EXECUTING command: 'open steam'
+10:41:23 _safe_process_command received: 'open steam'
+10:41:44 POST_WAKE result: 'open steam'
+10:41:44 EXECUTING command: 'open steam'
+10:41:44 _safe_process_command received: 'open steam'
+10:42:12 POST_WAKE result: 'open browser'
+10:42:12 EXECUTING command: 'open browser'
+10:42:12 _safe_process_command received: 'open browser'
+10:42:34 POST_WAKE result: 'open steam'
+10:42:34 EXECUTING command: 'open steam'
+10:42:34 _safe_process_command received: 'open steam'
+10:45:07 POST_WAKE result: 'open steam'
+10:45:07 EXECUTING command: 'open steam'
+10:45:07 _safe_process_command received: 'open steam'
+10:46:21 POST_WAKE result: 'that'
+10:46:21 EXECUTING command: 'that'
+10:46:21 _safe_process_command received: 'that'
+10:46:29 POST_WAKE result: 'opera browser'
+10:46:29 EXECUTING command: 'opera browser'
+10:46:29 _safe_process_command received: 'opera browser'
+10:46:29 process_command ENTERED with text='opera browser'
+10:46:29 process_command t0='opera browser' follow_active=False
+10:46:29 process_command study_intent=None
+10:46:50 POST_WAKE result: 'open browser'
+10:46:50 EXECUTING command: 'open browser'
+10:46:50 _safe_process_command received: 'open browser'
+10:47:08 POST_WAKE result: 'open steam'
+10:47:08 EXECUTING command: 'open steam'
+10:47:08 _safe_process_command received: 'open steam'
+10:47:08 process_command ENTERED with text='open steam'
+10:47:08 process_command t0='open steam' follow_active=False
+10:47:08 process_command study_intent=None
+10:47:16 POST_WAKE result: 'go to'
+10:47:16 EXECUTING command: 'go to'
+10:47:16 _safe_process_command received: 'go to'
+10:47:41 POST_WAKE result: 'open browser'
+10:47:41 EXECUTING command: 'open browser'
+10:47:41 _safe_process_command received: 'open browser'
+10:47:41 process_command ENTERED with text='open browser'
+10:47:41 process_command t0='open browser' follow_active=False
+10:47:41 process_command study_intent=None
+10:47:58 POST_WAKE result: 'open browser'
+10:47:58 EXECUTING command: 'open browser'
+10:47:58 _safe_process_command received: 'open browser'
+10:48:15 POST_WAKE result: 'open browser'
+10:48:15 EXECUTING command: 'open browser'
+10:48:15 _safe_process_command received: 'open browser'
+10:48:25 POST_WAKE result: 'open browser'
+10:48:25 EXECUTING command: 'open browser'
+10:48:25 _safe_process_command received: 'open browser'
+10:48:32 POST_WAKE result: 'grant access'
+10:48:32 EXECUTING command: 'grant access'
+10:48:32 _safe_process_command received: 'grant access'
+10:48:40 POST_WAKE result: 'grant access'
+10:48:40 EXECUTING command: 'grant access'
+10:48:40 _safe_process_command received: 'grant access'
+10:49:11 POST_WAKE result: 'open browser'
+10:49:11 EXECUTING command: 'open browser'
+10:49:11 _safe_process_command received: 'open browser'
+10:49:11 process_command ENTERED with text='open browser'
+10:49:11 process_command t0='open browser' follow_active=False
+10:49:11 process_command study_intent=None
+10:49:40 POST_WAKE result: 'revoke access'
+10:49:40 EXECUTING command: 'revoke access'
+10:49:40 _safe_process_command received: 'revoke access'
+10:49:49 POST_WAKE result: 'revoke access'
+10:49:49 EXECUTING command: 'revoke access'
+10:49:49 _safe_process_command received: 'revoke access'
+10:49:55 POST_WAKE result: 'did delete user two'
+10:49:55 EXECUTING command: 'did delete user two'
+10:49:55 _safe_process_command received: 'did delete user two'
+10:49:55 process_command ENTERED with text='did delete user two'
+10:49:55 process_command t0='did delete user two' follow_active=False
+10:49:55 process_command study_intent=None
+10:50:06 POST_WAKE result: 'delete user two'
+10:50:06 EXECUTING command: 'delete user two'
+10:50:06 _safe_process_command received: 'delete user two'
+10:50:19 POST_WAKE result: 'grant access'
+10:50:19 EXECUTING command: 'grant access'
+10:50:19 _safe_process_command received: 'grant access'
+10:50:25 POST_WAKE result: 'grant access'
+10:50:25 EXECUTING command: 'grant access'
+10:50:25 _safe_process_command received: 'grant access'
+10:50:40 POST_WAKE result: 'grant access'
+10:50:40 EXECUTING command: 'grant access'
+10:50:40 _safe_process_command received: 'grant access'
+10:50:46 POST_WAKE result: 'grant access'
+10:50:46 EXECUTING command: 'grant access'
+10:50:46 _safe_process_command received: 'grant access'
+10:53:02 POST_WAKE result: 'grant access'
+10:53:02 EXECUTING command: 'grant access'
+10:53:02 _safe_process_command received: 'grant access'
+10:53:35 POST_WAKE result: 'grant access'
+10:53:35 EXECUTING command: 'grant access'
+10:53:35 _safe_process_command received: 'grant access'
+10:54:12 POST_WAKE result: 'grant access'
+10:54:12 EXECUTING command: 'grant access'
+10:54:12 _safe_process_command received: 'grant access'
+10:54:18 POST_WAKE result: 'grant access'
+10:54:18 EXECUTING command: 'grant access'
+10:54:18 _safe_process_command received: 'grant access'
+10:54:24 POST_WAKE result: 'grant access'
+10:54:24 EXECUTING command: 'grant access'
+10:54:24 _safe_process_command received: 'grant access'
+10:54:37 POST_WAKE result: 'grant access'
+10:54:37 EXECUTING command: 'grant access'
+10:54:37 _safe_process_command received: 'grant access'
+10:55:16 POST_WAKE result: 'that alone'
+10:55:16 EXECUTING command: 'that alone'
+10:55:16 _safe_process_command received: 'that alone'
+10:55:22 POST_WAKE result: 'click'
+10:55:22 EXECUTING command: 'click'
+10:55:22 _safe_process_command received: 'click'
+10:55:28 POST_WAKE result: 'click'
+10:55:28 EXECUTING command: 'click'
+10:55:28 _safe_process_command received: 'click'
+10:55:34 POST_WAKE result: 'click'
+10:55:34 EXECUTING command: 'click'
+10:55:34 _safe_process_command received: 'click'
+10:55:34 process_command ENTERED with text='click'
+10:55:34 process_command t0='click' follow_active=False
+10:55:34 process_command study_intent=None
+10:56:32 POST_WAKE result: 'go'
+10:56:32 EXECUTING command: 'go'
+10:56:32 _safe_process_command received: 'go'
+10:57:29 POST_WAKE result: 'go app'
+10:57:29 EXECUTING command: 'go app'
+10:57:29 _safe_process_command received: 'go app'
+11:22:06 POST_WAKE result: 'you did'
+11:22:06 EXECUTING command: 'you did'
+11:22:06 _safe_process_command received: 'you did'
+11:22:22 process_command ENTERED with text='you did'
+11:22:22 process_command t0='you did' follow_active=False
+11:22:22 process_command study_intent=None
+11:22:31 POST_WAKE result: 'open browser'
+11:22:31 EXECUTING command: 'open browser'
+11:22:32 _safe_process_command received: 'open browser'
+11:22:32 process_command ENTERED with text='open browser'
+11:22:32 process_command t0='open browser' follow_active=False
+11:22:32 process_command study_intent=None
+11:22:44 POST_WAKE result: 'open browser'
+11:22:44 EXECUTING command: 'open browser'
+11:22:44 _safe_process_command received: 'open browser'
+11:22:44 process_command ENTERED with text='open browser'
+11:22:44 process_command t0='open browser' follow_active=False
+11:22:44 process_command study_intent=None
+11:22:56 POST_WAKE result: 'open browser'
+11:22:56 EXECUTING command: 'open browser'
+11:22:56 _safe_process_command received: 'open browser'
+11:22:56 process_command ENTERED with text='open browser'
+11:22:56 process_command t0='open browser' follow_active=False
+11:22:56 process_command study_intent=None
+11:23:11 POST_WAKE result: 'open steam'
+11:23:11 EXECUTING command: 'open steam'
+11:23:11 _safe_process_command received: 'open steam'
+11:23:11 process_command ENTERED with text='open steam'
+11:23:11 process_command t0='open steam' follow_active=False
+11:23:11 process_command study_intent=None
+11:42:31 POST_WAKE result: 'open steam'
+11:42:31 EXECUTING command: 'open steam'
+11:42:31 _safe_process_command received: 'open steam'
+11:42:31 process_command ENTERED with text='open steam'
+11:42:31 process_command t0='open steam' follow_active=False
+11:42:31 process_command study_intent=None
+11:46:23 POST_WAKE result: 'up'
+11:46:23 EXECUTING command: 'up'
+11:46:23 _safe_process_command received: 'up'
+11:46:28 process_command ENTERED with text='up'
+11:46:28 process_command t0='up' follow_active=False
+11:46:28 process_command study_intent=None
+11:46:38 POST_WAKE result: 'open browser'
+11:46:38 EXECUTING command: 'open browser'
+11:46:38 _safe_process_command received: 'open browser'
+11:46:43 POST_WAKE result: 'open browser'
+11:46:43 EXECUTING command: 'open browser'
+11:46:43 _safe_process_command received: 'open browser'
+11:46:47 POST_WAKE result: 'open browser'
+11:46:47 EXECUTING command: 'open browser'
+11:46:47 _safe_process_command received: 'open browser'
+11:46:52 POST_WAKE result: 'open steam'
+11:46:52 EXECUTING command: 'open steam'
+11:46:52 _safe_process_command received: 'open steam'
+11:47:19 POST_WAKE result: 'open browser'
+11:47:19 EXECUTING command: 'open browser'
+11:47:19 _safe_process_command received: 'open browser'
+11:47:51 POST_WAKE result: 'open browser'
+11:47:51 EXECUTING command: 'open browser'
+11:47:51 _safe_process_command received: 'open browser'
+11:48:34 POST_WAKE result: 'open browser'
+11:48:34 EXECUTING command: 'open browser'
+11:48:34 _safe_process_command received: 'open browser'
+11:48:34 process_command ENTERED with text='open browser'
+11:48:34 process_command t0='open browser' follow_active=False
+11:48:34 process_command study_intent=None
+11:48:41 POST_WAKE result: 'open steam'
+11:48:41 EXECUTING command: 'open steam'
+11:48:41 _safe_process_command received: 'open steam'
+11:48:41 process_command ENTERED with text='open steam'
+11:48:41 process_command t0='open steam' follow_active=False
+11:48:41 process_command study_intent=None
+11:48:48 POST_WAKE result: 'open steam'
+11:48:48 EXECUTING command: 'open steam'
+11:48:48 _safe_process_command received: 'open steam'
+11:48:48 process_command ENTERED with text='open steam'
+11:48:48 process_command t0='open steam' follow_active=False
+11:48:48 process_command study_intent=None
+11:48:52 POST_WAKE result: 'opera browser'
+11:48:52 EXECUTING command: 'opera browser'
+11:48:52 _safe_process_command received: 'opera browser'
+11:48:57 POST_WAKE result: 'open browser'
+11:48:57 EXECUTING command: 'open browser'
+11:48:57 _safe_process_command received: 'open browser'
+11:49:02 POST_WAKE result: 'open browser'
+11:49:02 EXECUTING command: 'open browser'
+11:49:02 _safe_process_command received: 'open browser'
+11:49:10 POST_WAKE result: 'open steam'
+11:49:10 EXECUTING command: 'open steam'
+11:49:10 _safe_process_command received: 'open steam'
+11:49:10 process_command ENTERED with text='open steam'
+11:49:10 process_command t0='open steam' follow_active=False
+11:49:10 process_command study_intent=None
+11:49:16 POST_WAKE result: 'open browser'
+11:49:16 EXECUTING command: 'open browser'
+11:49:16 _safe_process_command received: 'open browser'
+11:49:16 process_command ENTERED with text='open browser'
+11:49:16 process_command t0='open browser' follow_active=False
+11:49:16 process_command study_intent=None
+11:49:26 POST_WAKE result: 'None'
+11:50:47 POST_WAKE result: 'open browser'
+11:50:47 EXECUTING command: 'open browser'
+11:50:47 _safe_process_command received: 'open browser'
+11:50:52 POST_WAKE result: 'open steam'
+11:50:52 EXECUTING command: 'open steam'
+11:50:52 _safe_process_command received: 'open steam'
+11:50:52 process_command ENTERED with text='open steam'
+11:50:52 process_command t0='open steam' follow_active=False
+11:50:52 process_command study_intent=None
+11:51:21 POST_WAKE result: 'open steam'
+11:51:21 EXECUTING command: 'open steam'
+11:51:21 _safe_process_command received: 'open steam'
+11:51:30 POST_WAKE result: 'open steam'
+11:51:30 EXECUTING command: 'open steam'
+11:51:30 _safe_process_command received: 'open steam'
+11:51:30 process_command ENTERED with text='open steam'
+11:51:30 process_command t0='open steam' follow_active=False
+11:51:30 process_command study_intent=None
+11:51:54 POST_WAKE result: 'open steam'
+11:51:54 EXECUTING command: 'open steam'
+11:51:54 _safe_process_command received: 'open steam'
+11:52:50 POST_WAKE result: 'open move on'
+11:52:50 EXECUTING command: 'open move on'
+11:52:50 _safe_process_command received: 'open move on'
+11:53:00 POST_WAKE result: 'open browser'
+11:53:00 EXECUTING command: 'open browser'
+11:53:00 _safe_process_command received: 'open browser'
+11:53:21 POST_WAKE result: 'open browser'
+11:53:21 EXECUTING command: 'open browser'
+11:53:21 _safe_process_command received: 'open browser'
+11:53:29 POST_WAKE result: 'open'
+11:53:29 EXECUTING command: 'open'
+11:53:29 _safe_process_command received: 'open'
+11:53:40 POST_WAKE result: 'open steam'
+11:53:40 EXECUTING command: 'open steam'
+11:53:40 _safe_process_command received: 'open steam'
+11:53:40 process_command ENTERED with text='open steam'
+11:53:40 process_command t0='open steam' follow_active=False
+11:53:40 process_command study_intent=None
+11:55:19 POST_WAKE result: 'the browser do it'
+11:55:19 EXECUTING command: 'the browser do it'
+11:55:19 _safe_process_command received: 'the browser do it'
+11:55:19 process_command ENTERED with text='the browser do it'
+11:55:19 process_command t0='the browser do it' follow_active=False
+11:55:19 process_command study_intent=None
+11:56:42 POST_WAKE result: 'scroll down'
+11:56:42 EXECUTING command: 'scroll down'
+11:56:42 _safe_process_command received: 'scroll down'
+11:56:42 process_command ENTERED with text='scroll down'
+11:56:42 process_command t0='scroll down' follow_active=False
+11:56:42 process_command study_intent=None
+12:01:19 POST_WAKE result: 'shut up'
+12:01:19 EXECUTING command: 'shut up'
+12:01:19 _safe_process_command received: 'shut up'
+12:01:19 process_command ENTERED with text='shut up'
+12:01:19 process_command t0='shut up' follow_active=False
+12:01:19 process_command study_intent=None
+12:01:28 POST_WAKE result: 'lock'
+12:01:28 EXECUTING command: 'lock'
+12:01:28 _safe_process_command received: 'lock'
+12:01:28 process_command ENTERED with text='lock'
+12:01:28 process_command t0='lock' follow_active=False
+12:01:28 process_command study_intent=None
+12:04:17 POST_WAKE result: 'last just'
+12:04:17 EXECUTING command: 'last just'
+12:04:17 _safe_process_command received: 'last just'
+12:04:17 process_command ENTERED with text='last just'
+12:04:17 process_command t0='last just' follow_active=False
+12:04:17 process_command study_intent=None
+12:05:36 POST_WAKE result: 'never'
+12:05:36 EXECUTING command: 'never'
+12:05:36 _safe_process_command received: 'never'
+12:06:14 process_command ENTERED with text='never'
+12:06:14 process_command t0='never' follow_active=False
+12:06:14 process_command study_intent=None
+12:06:20 POST_WAKE result: 'open yandex'
+12:06:20 EXECUTING command: 'open yandex'
+12:06:20 _safe_process_command received: 'open yandex'
+12:06:20 process_command ENTERED with text='open yandex'
+12:06:20 process_command t0='open yandex' follow_active=False
+12:06:20 process_command study_intent=None
+12:06:57 POST_WAKE result: 'off yandex'
+12:06:57 EXECUTING command: 'off yandex'
+12:06:57 _safe_process_command received: 'off yandex'
+12:06:57 process_command ENTERED with text='off yandex'
+12:06:57 process_command t0='off yandex' follow_active=False
+12:06:57 process_command study_intent=None
+12:07:05 POST_WAKE result: 'open steam'
+12:07:05 EXECUTING command: 'open steam'
+12:07:05 _safe_process_command received: 'open steam'
+12:07:05 process_command ENTERED with text='open steam'
+12:07:05 process_command t0='open steam' follow_active=False
+12:07:05 process_command study_intent=None
+12:09:33 POST_WAKE result: 'study mode'
+12:09:33 EXECUTING command: 'study mode'
+12:09:33 _safe_process_command received: 'study mode'
+12:09:33 process_command ENTERED with text='study mode'
+12:09:33 process_command t0='study mode' follow_active=False
+12:09:33 process_command study_intent=study_mode_start
+12:10:36 POST_WAKE result: 'None'
+12:10:41 POST_WAKE result: 'open browser'
+12:10:41 EXECUTING command: 'open browser'
+12:10:41 _safe_process_command received: 'open browser'
+12:10:41 process_command ENTERED with text='open browser'
+12:10:41 process_command t0='open browser' follow_active=False
+12:10:41 process_command study_intent=None
+12:11:09 POST_WAKE result: 'open browser'
+12:11:09 EXECUTING command: 'open browser'
+12:11:09 _safe_process_command received: 'open browser'
+12:11:22 POST_WAKE result: 'open steam'
+12:11:22 EXECUTING command: 'open steam'
+12:11:22 _safe_process_command received: 'open steam'
+12:11:27 POST_WAKE result: 'open steam'
+12:11:27 EXECUTING command: 'open steam'
+12:11:27 _safe_process_command received: 'open steam'
+12:11:35 POST_WAKE result: 'open steam'
+12:11:35 EXECUTING command: 'open steam'
+12:11:35 _safe_process_command received: 'open steam'
+12:11:35 process_command ENTERED with text='open steam'
+12:11:35 process_command t0='open steam' follow_active=False
+12:11:35 process_command study_intent=None
+12:11:48 POST_WAKE result: 'custom mode'
+12:11:48 EXECUTING command: 'custom mode'
+12:11:48 _safe_process_command received: 'custom mode'
+12:11:48 CUSTOM_MODE matched! Calling process_command...
+12:11:48 process_command ENTERED with text='custom mode'
+12:11:48 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+12:11:48 _execute_all: file exists=True
+12:11:48 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+12:11:48 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+12:11:48 slot done: open_app|yandex_browser
+12:11:48 _execute_all: slot 0 done
+12:11:48 _execute_all: slot 1 empty, skip
+12:11:48 _execute_all: slot 2 empty, skip
+12:11:48 _execute_all: executed 1 slot(s)
+12:11:48 process_command returned: True
+12:11:53 POST_WAKE result: 'custom mode'
+12:11:53 EXECUTING command: 'custom mode'
+12:11:53 _safe_process_command received: 'custom mode'
+12:11:53 CUSTOM_MODE matched! Calling process_command...
+12:11:53 process_command ENTERED with text='custom mode'
+12:11:53 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+12:11:53 _execute_all: file exists=True
+12:11:53 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+12:11:53 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+12:11:53 slot done: open_app|yandex_browser
+12:11:53 _execute_all: slot 0 done
+12:11:53 _execute_all: slot 1 empty, skip
+12:11:53 _execute_all: slot 2 empty, skip
+12:11:53 _execute_all: executed 1 slot(s)
+12:11:53 process_command returned: True
+12:12:48 POST_WAKE result: 'hive'
+12:12:48 EXECUTING command: 'hive'
+12:12:48 _safe_process_command received: 'hive'
+12:12:52 POST_WAKE result: 'stop'
+12:12:52 EXECUTING command: 'stop'
+12:12:52 _safe_process_command received: 'stop'
+12:12:55 POST_WAKE result: 'stop'
+12:12:55 EXECUTING command: 'stop'
+12:12:55 _safe_process_command received: 'stop'
+12:12:58 POST_WAKE result: 'stop'
+12:12:58 EXECUTING command: 'stop'
+12:12:58 _safe_process_command received: 'stop'
+12:13:02 POST_WAKE result: '__SKIP_WAKE_COMMAND__'
+12:13:12 POST_WAKE result: 'stop'
+12:13:12 EXECUTING command: 'stop'
+12:13:12 _safe_process_command received: 'stop'
+12:13:16 POST_WAKE result: 'stop'
+12:13:16 EXECUTING command: 'stop'
+12:13:16 _safe_process_command received: 'stop'
+12:13:19 POST_WAKE result: 'stop'
+12:13:19 EXECUTING command: 'stop'
+12:13:19 _safe_process_command received: 'stop'
+12:15:44 POST_WAKE result: 'local mode'
+12:15:44 EXECUTING command: 'local mode'
+12:15:44 _safe_process_command received: 'local mode'
+12:15:44 CUSTOM_MODE matched! Calling process_command...
+12:15:44 process_command ENTERED with text='local mode'
+12:15:44 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+12:15:44 _execute_all: file exists=True
+12:15:44 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+12:15:44 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+12:15:44 slot done: open_app|yandex_browser
+12:15:44 _execute_all: slot 0 done
+12:15:44 _execute_all: slot 1 empty, skip
+12:15:44 _execute_all: slot 2 empty, skip
+12:15:44 _execute_all: executed 1 slot(s)
+12:15:44 process_command returned: True
+12:18:22 POST_WAKE result: 'None'
+12:18:29 POST_WAKE result: 'open steam'
+12:18:29 EXECUTING command: 'open steam'
+12:18:29 _safe_process_command received: 'open steam'
+12:21:17 POST_WAKE result: 'None'
+12:22:36 POST_WAKE result: 'is left'
+12:22:36 EXECUTING command: 'is left'
+12:22:36 _safe_process_command received: 'is left'
+12:23:23 POST_WAKE result: 'None'
+12:23:29 POST_WAKE result: 'open steam'
+12:23:29 EXECUTING command: 'open steam'
+12:23:29 _safe_process_command received: 'open steam'
+12:23:35 POST_WAKE result: 'open steam'
+12:23:35 EXECUTING command: 'open steam'
+12:23:35 _safe_process_command received: 'open steam'
+12:23:41 POST_WAKE result: 'open browser'
+12:23:41 EXECUTING command: 'open browser'
+12:23:41 _safe_process_command received: 'open browser'
+12:30:16 POST_WAKE result: 'None'
+12:32:01 POST_WAKE result: 'open'
+12:32:01 EXECUTING command: 'open'
+12:32:01 _safe_process_command received: 'open'
+12:32:18 POST_WAKE result: 'open steam'
+12:32:18 EXECUTING command: 'open steam'
+12:32:18 _safe_process_command received: 'open steam'
+12:32:18 process_command ENTERED with text='open steam'
+12:32:18 process_command t0='open steam' follow_active=False
+12:32:18 process_command study_intent=None
+12:36:06 POST_WAKE result: 'None'
+12:36:53 POST_WAKE result: 'None'
+12:41:13 POST_WAKE result: 'None'
+12:41:19 POST_WAKE result: 'open steam'
+12:41:19 EXECUTING command: 'open steam'
+12:41:19 _safe_process_command received: 'open steam'
+12:41:19 process_command ENTERED with text='open steam'
+12:41:19 process_command t0='open steam' follow_active=False
+12:41:19 process_command study_intent=None
+12:41:45 POST_WAKE result: 'open steam'
+12:41:45 EXECUTING command: 'open steam'
+12:41:45 _safe_process_command received: 'open steam'
+12:41:55 POST_WAKE result: 'open steam'
+12:41:55 EXECUTING command: 'open steam'
+12:41:55 _safe_process_command received: 'open steam'
+12:42:02 POST_WAKE result: 'open steam'
+12:42:02 EXECUTING command: 'open steam'
+12:42:03 _safe_process_command received: 'open steam'
+12:42:03 process_command ENTERED with text='open steam'
+12:42:03 process_command t0='open steam' follow_active=False
+12:42:03 process_command study_intent=None
+12:43:44 POST_WAKE result: 'scroll down'
+12:43:44 EXECUTING command: 'scroll down'
+12:43:44 _safe_process_command received: 'scroll down'
+12:43:49 POST_WAKE result: 'volume up'
+12:43:49 EXECUTING command: 'volume up'
+12:43:49 _safe_process_command received: 'volume up'
+12:43:54 POST_WAKE result: 'volume up'
+12:43:54 EXECUTING command: 'volume up'
+12:43:54 _safe_process_command received: 'volume up'
+12:43:54 process_command ENTERED with text='volume up'
+12:43:54 process_command t0='volume up' follow_active=False
+12:43:54 process_command study_intent=None
+12:44:04 _safe_process_command received: 'ten'
+12:44:04 process_command ENTERED with text='ten'
+12:44:04 process_command t0='ten' follow_active=False
+12:44:04 process_command study_intent=None
+12:44:11 POST_WAKE result: 'volume up'
+12:44:11 EXECUTING command: 'volume up'
+12:44:11 _safe_process_command received: 'volume up'
+12:44:11 process_command ENTERED with text='volume up'
+12:44:11 process_command t0='volume up' follow_active=False
+12:44:11 process_command study_intent=None
+12:44:20 _safe_process_command received: 'ten'
+12:44:20 process_command ENTERED with text='ten'
+12:44:20 process_command t0='ten' follow_active=False
+12:44:20 process_command study_intent=None
+12:44:27 POST_WAKE result: 'decrease volume up'
+12:44:27 EXECUTING command: 'decrease volume up'
+12:44:27 _safe_process_command received: 'decrease volume up'
+12:44:27 process_command ENTERED with text='decrease volume up'
+12:44:27 process_command t0='decrease volume up' follow_active=False
+12:44:27 process_command study_intent=None
+12:44:34 POST_WAKE result: 'volume up'
+12:44:34 EXECUTING command: 'volume up'
+12:44:34 _safe_process_command received: 'volume up'
+12:44:39 POST_WAKE result: 'volume up'
+12:44:39 EXECUTING command: 'volume up'
+12:44:39 _safe_process_command received: 'volume up'
+12:44:39 process_command ENTERED with text='volume up'
+12:44:39 process_command t0='volume up' follow_active=False
+12:44:39 process_command study_intent=None
+12:44:49 _safe_process_command received: 'fife'
+12:44:56 POST_WAKE result: 'scroll down'
+12:44:56 EXECUTING command: 'scroll down'
+12:44:56 _safe_process_command received: 'scroll down'
+12:44:56 process_command ENTERED with text='scroll down'
+12:44:56 process_command t0='scroll down' follow_active=False
+12:44:56 process_command study_intent=None
+12:45:44 POST_WAKE result: 'a song'
+12:45:44 EXECUTING command: 'a song'
+12:45:44 _safe_process_command received: 'a song'
+12:45:44 process_command ENTERED with text='a song'
+12:45:44 process_command t0='a song' follow_active=False
+12:45:44 process_command study_intent=None
+12:45:52 POST_WAKE result: 'scroll up'
+12:45:52 EXECUTING command: 'scroll up'
+12:45:52 _safe_process_command received: 'scroll up'
+12:45:58 POST_WAKE result: 'grant access'
+12:45:58 EXECUTING command: 'grant access'
+12:45:58 _safe_process_command received: 'grant access'
+12:46:28 POST_WAKE result: 'mouse right'
+12:46:28 EXECUTING command: 'mouse right'
+12:46:28 _safe_process_command received: 'mouse right'
+12:46:28 process_command ENTERED with text='mouse right'
+12:46:28 process_command t0='mouse right' follow_active=False
+12:46:28 process_command study_intent=None
+12:46:38 POST_WAKE result: 'mouse left'
+12:46:38 EXECUTING command: 'mouse left'
+12:46:38 _safe_process_command received: 'mouse left'
+12:46:38 process_command ENTERED with text='mouse left'
+12:46:38 process_command t0='mouse left' follow_active=False
+12:46:38 process_command study_intent=None
+12:46:50 POST_WAKE result: 'mouse left'
+12:46:50 EXECUTING command: 'mouse left'
+12:46:50 _safe_process_command received: 'mouse left'
+12:46:50 process_command ENTERED with text='mouse left'
+12:46:50 process_command t0='mouse left' follow_active=False
+12:46:50 process_command study_intent=None
+12:46:55 POST_WAKE result: 'mouse up'
+12:46:55 EXECUTING command: 'mouse up'
+12:46:55 _safe_process_command received: 'mouse up'
+12:46:55 process_command ENTERED with text='mouse up'
+12:46:55 process_command t0='mouse up' follow_active=False
+12:46:55 process_command study_intent=None
+12:47:00 POST_WAKE result: 'music open opera'
+12:47:00 EXECUTING command: 'music open opera'
+12:47:00 _safe_process_command received: 'music open opera'
+12:47:00 process_command ENTERED with text='music open opera'
+12:47:00 process_command t0='music open opera' follow_active=False
+12:47:00 process_command study_intent=None
+12:47:09 POST_WAKE result: 'mouse left'
+12:47:09 EXECUTING command: 'mouse left'
+12:47:09 _safe_process_command received: 'mouse left'
+12:47:09 process_command ENTERED with text='mouse left'
+12:47:09 process_command t0='mouse left' follow_active=False
+12:47:09 process_command study_intent=None
+12:47:19 POST_WAKE result: 'scroll mode'
+12:47:19 EXECUTING command: 'scroll mode'
+12:47:19 _safe_process_command received: 'scroll mode'
+12:47:19 process_command ENTERED with text='scroll mode'
+12:47:19 process_command t0='scroll mode' follow_active=False
+12:47:19 process_command study_intent=None
+12:47:28 POST_WAKE result: 'switch'
+12:47:28 EXECUTING command: 'switch'
+12:47:28 _safe_process_command received: 'switch'
+12:47:28 process_command ENTERED with text='switch'
+12:47:28 process_command t0='switch' follow_active=False
+12:47:28 process_command study_intent=None
+12:47:30 _safe_process_command received: 'done'
+12:47:30 process_command ENTERED with text='done'
+12:47:40 POST_WAKE result: 'mouse right'
+12:47:40 EXECUTING command: 'mouse right'
+12:47:40 _safe_process_command received: 'mouse right'
+12:47:40 process_command ENTERED with text='mouse right'
+12:47:40 process_command t0='mouse right' follow_active=False
+12:47:40 process_command study_intent=None
+12:47:44 POST_WAKE result: 'mouse right'
+12:47:44 EXECUTING command: 'mouse right'
+12:47:44 _safe_process_command received: 'mouse right'
+12:47:44 process_command ENTERED with text='mouse right'
+12:47:44 process_command t0='mouse right' follow_active=False
+12:47:44 process_command study_intent=None
+12:47:49 POST_WAKE result: 'mouse down'
+12:47:49 EXECUTING command: 'mouse down'
+12:47:49 _safe_process_command received: 'mouse down'
+12:47:49 process_command ENTERED with text='mouse down'
+12:47:49 process_command t0='mouse down' follow_active=False
+12:47:49 process_command study_intent=None
+12:47:53 POST_WAKE result: 'click'
+12:47:53 EXECUTING command: 'click'
+12:47:53 _safe_process_command received: 'click'
+12:47:53 process_command ENTERED with text='click'
+12:47:53 process_command t0='click' follow_active=False
+12:47:53 process_command study_intent=None
+12:47:59 POST_WAKE result: 'scroll up'
+12:47:59 EXECUTING command: 'scroll up'
+12:47:59 _safe_process_command received: 'scroll up'
+12:47:59 process_command ENTERED with text='scroll up'
+12:47:59 process_command t0='scroll up' follow_active=False
+12:47:59 process_command study_intent=None
+12:48:10 POST_WAKE result: 'scroll up'
+12:48:10 EXECUTING command: 'scroll up'
+12:48:10 _safe_process_command received: 'scroll up'
+12:48:10 process_command ENTERED with text='scroll up'
+12:48:10 process_command t0='scroll up' follow_active=False
+12:48:10 process_command study_intent=None
+12:48:17 POST_WAKE result: 'scroll down'
+12:48:17 EXECUTING command: 'scroll down'
+12:48:17 _safe_process_command received: 'scroll down'
+12:48:17 process_command ENTERED with text='scroll down'
+12:48:17 process_command t0='scroll down' follow_active=False
+12:48:17 process_command study_intent=None
+12:48:40 POST_WAKE result: 'scroll up mouse down'
+12:48:40 EXECUTING command: 'scroll up mouse down'
+12:48:40 _safe_process_command received: 'scroll up mouse down'
+12:48:40 process_command ENTERED with text='scroll up mouse down'
+12:48:40 process_command t0='scroll up mouse down' follow_active=False
+12:48:40 process_command study_intent=None
+12:48:46 POST_WAKE result: 'mouse up'
+12:48:46 EXECUTING command: 'mouse up'
+12:48:46 _safe_process_command received: 'mouse up'
+12:48:46 process_command ENTERED with text='mouse up'
+12:48:46 process_command t0='mouse up' follow_active=False
+12:48:46 process_command study_intent=None
+12:48:56 POST_WAKE result: 'mouse up'
+12:48:56 EXECUTING command: 'mouse up'
+12:48:56 _safe_process_command received: 'mouse up'
+12:48:56 process_command ENTERED with text='mouse up'
+12:48:56 process_command t0='mouse up' follow_active=False
+12:48:56 process_command study_intent=None
+12:49:03 POST_WAKE result: 'mouse down'
+12:49:03 EXECUTING command: 'mouse down'
+12:49:03 _safe_process_command received: 'mouse down'
+12:49:03 process_command ENTERED with text='mouse down'
+12:49:03 process_command t0='mouse down' follow_active=False
+12:49:03 process_command study_intent=None
+12:49:13 POST_WAKE result: 'mouse up'
+12:49:13 EXECUTING command: 'mouse up'
+12:49:13 _safe_process_command received: 'mouse up'
+12:49:13 process_command ENTERED with text='mouse up'
+12:49:13 process_command t0='mouse up' follow_active=False
+12:49:13 process_command study_intent=None
+12:49:21 POST_WAKE result: 'quick'
+12:49:21 EXECUTING command: 'quick'
+12:49:21 _safe_process_command received: 'quick'
+12:49:21 process_command ENTERED with text='quick'
+12:49:21 process_command t0='click' follow_active=False
+12:49:21 process_command study_intent=None
+12:49:26 POST_WAKE result: 'click'
+12:49:26 EXECUTING command: 'click'
+12:49:26 _safe_process_command received: 'click'
+12:49:26 process_command ENTERED with text='click'
+12:49:26 process_command t0='click' follow_active=False
+12:49:26 process_command study_intent=None
+12:49:31 POST_WAKE result: 'click'
+12:49:31 EXECUTING command: 'click'
+12:49:31 _safe_process_command received: 'click'
+12:49:31 process_command ENTERED with text='click'
+12:49:31 process_command t0='click' follow_active=False
+12:49:31 process_command study_intent=None
+12:49:36 POST_WAKE result: 'click'
+12:49:36 EXECUTING command: 'click'
+12:49:36 _safe_process_command received: 'click'
+12:49:36 process_command ENTERED with text='click'
+12:49:36 process_command t0='click' follow_active=False
+12:49:36 process_command study_intent=None
+12:49:42 POST_WAKE result: 'mouse down'
+12:49:42 EXECUTING command: 'mouse down'
+12:49:42 _safe_process_command received: 'mouse down'
+12:49:42 process_command ENTERED with text='mouse down'
+12:49:42 process_command t0='mouse down' follow_active=False
+12:49:42 process_command study_intent=None
+12:49:47 POST_WAKE result: 'mouse down'
+12:49:47 EXECUTING command: 'mouse down'
+12:49:47 _safe_process_command received: 'mouse down'
+12:49:47 process_command ENTERED with text='mouse down'
+12:49:47 process_command t0='mouse down' follow_active=False
+12:49:47 process_command study_intent=None
+12:49:51 POST_WAKE result: 'repeat'
+12:49:51 EXECUTING command: 'repeat'
+12:49:51 _safe_process_command received: 'repeat'
+12:49:51 process_command ENTERED with text='repeat'
+12:49:51 process_command t0='repeat' follow_active=False
+12:49:51 process_command study_intent=None
+12:49:54 _safe_process_command received: 'okay'
+12:49:54 process_command ENTERED with text='okay'
+12:49:57 _safe_process_command received: 'left'
+12:49:57 process_command ENTERED with text='left'
+12:50:01 _safe_process_command received: 'done'
+12:50:01 process_command ENTERED with text='done'
+12:50:05 POST_WAKE result: 'mouse go'
+12:50:05 EXECUTING command: 'mouse go'
+12:50:05 _safe_process_command received: 'mouse go'
+12:50:05 process_command ENTERED with text='mouse go'
+12:50:05 process_command t0='mouse go' follow_active=False
+12:50:05 process_command study_intent=None
+12:50:12 POST_WAKE result: 'mouse down'
+12:50:12 EXECUTING command: 'mouse down'
+12:50:12 _safe_process_command received: 'mouse down'
+12:50:12 process_command ENTERED with text='mouse down'
+12:50:12 process_command t0='mouse down' follow_active=False
+12:50:12 process_command study_intent=None
+12:50:16 POST_WAKE result: 'repeat that'
+12:50:16 EXECUTING command: 'repeat that'
+12:50:16 _safe_process_command received: 'repeat that'
+12:50:16 process_command ENTERED with text='repeat that'
+12:50:16 process_command t0='repeat that' follow_active=False
+12:50:16 process_command study_intent=None
+12:50:24 _safe_process_command received: 'on never hide'
+12:50:28 _safe_process_command received: 'dwa'
+12:50:28 process_command ENTERED with text='dwa'
+12:50:32 _safe_process_command received: 'okay'
+12:50:32 process_command ENTERED with text='okay'
+12:50:35 _safe_process_command received: 'hide'
+12:50:35 process_command ENTERED with text='hide'
+12:50:38 _safe_process_command received: 'left'
+12:50:38 process_command ENTERED with text='left'
+12:50:41 _safe_process_command received: 'okay'
+12:50:41 process_command ENTERED with text='okay'
+12:50:44 _safe_process_command received: 'right'
+12:50:44 process_command ENTERED with text='right'
+12:50:47 _safe_process_command received: 'nine'
+12:50:47 process_command ENTERED with text='nine'
+12:50:50 _safe_process_command received: 'that'
+12:50:50 process_command ENTERED with text='that'
+12:50:53 _safe_process_command received: 'down'
+12:50:53 process_command ENTERED with text='down'
+12:51:02 _safe_process_command received: 'num exit exit'
+12:51:02 process_command ENTERED with text='num exit exit'
+12:51:05 _safe_process_command received: 'done'
+12:51:05 process_command ENTERED with text='done'
+12:51:10 POST_WAKE result: 'mouse down'
+12:51:10 EXECUTING command: 'mouse down'
+12:51:10 _safe_process_command received: 'mouse down'
+12:51:10 process_command ENTERED with text='mouse down'
+12:51:10 process_command t0='mouse down' follow_active=False
+12:51:10 process_command study_intent=None
+12:51:20 POST_WAKE result: 'mouse down'
+12:51:20 EXECUTING command: 'mouse down'
+12:51:20 _safe_process_command received: 'mouse down'
+12:51:20 process_command ENTERED with text='mouse down'
+12:51:20 process_command t0='mouse down' follow_active=False
+12:51:20 process_command study_intent=None
+12:51:25 POST_WAKE result: 'mouse down'
+12:51:25 EXECUTING command: 'mouse down'
+12:51:25 _safe_process_command received: 'mouse down'
+12:51:25 process_command ENTERED with text='mouse down'
+12:51:25 process_command t0='mouse down' follow_active=False
+12:51:25 process_command study_intent=None
+12:51:37 POST_WAKE result: 'click'
+12:51:37 EXECUTING command: 'click'
+12:51:37 _safe_process_command received: 'click'
+12:51:37 process_command ENTERED with text='click'
+12:51:37 process_command t0='click' follow_active=False
+12:51:37 process_command study_intent=None
+12:53:05 POST_WAKE result: '__SKIP_WAKE_COMMAND__'
+12:53:12 POST_WAKE result: 'three'
+12:53:12 EXECUTING command: 'three'
+12:53:12 _safe_process_command received: 'three'
+12:53:12 process_command ENTERED with text='three'
+12:53:12 process_command t0='three' follow_active=False
+12:53:12 process_command study_intent=None
+12:53:22 POST_WAKE result: 'click i'
+12:53:22 EXECUTING command: 'click i'
+12:53:22 _safe_process_command received: 'click i'
+12:53:22 process_command ENTERED with text='click i'
+12:53:22 process_command t0='click i' follow_active=False
+12:53:22 process_command study_intent=None
+12:53:29 POST_WAKE result: 'click'
+12:53:29 EXECUTING command: 'click'
+12:53:29 _safe_process_command received: 'click'
+12:53:29 process_command ENTERED with text='click'
+12:53:29 process_command t0='click' follow_active=False
+12:53:29 process_command study_intent=None
+22:01:03 POST_WAKE result: 'you opera browser'
+22:01:03 EXECUTING command: 'you opera browser'
+22:01:03 _safe_process_command received: 'you opera browser'
+22:02:04 process_command ENTERED with text='you opera browser'
+22:02:04 process_command t0='you opera browser' follow_active=False
+22:02:04 process_command study_intent=None
+22:09:40 POST_WAKE result: 'None'
+22:09:49 POST_WAKE result: 'None'
+22:10:05 POST_WAKE result: 'the other'
+22:10:05 EXECUTING command: 'the other'
+22:10:05 _safe_process_command received: 'the other'
+22:10:19 POST_WAKE result: 'open cmd'
+22:10:19 EXECUTING command: 'open cmd'
+22:10:19 _safe_process_command received: 'open cmd'
+22:10:26 POST_WAKE result: 'they'll that'
+22:10:26 EXECUTING command: 'they'll that'
+22:10:26 _safe_process_command received: 'they'll that'
+22:11:08 POST_WAKE result: 'open'
+22:11:08 EXECUTING command: 'open'
+22:11:08 _safe_process_command received: 'open'
+22:11:21 POST_WAKE result: 'open steam'
+22:11:21 EXECUTING command: 'open steam'
+22:11:21 _safe_process_command received: 'open steam'
+22:11:35 POST_WAKE result: 'open steam'
+22:11:35 EXECUTING command: 'open steam'
+22:11:35 _safe_process_command received: 'open steam'
+22:13:57 POST_WAKE result: 'on him'
+22:13:57 EXECUTING command: 'on him'
+22:13:57 _safe_process_command received: 'on him'
+22:13:57 process_command ENTERED with text='on him'
+22:13:57 process_command t0='on him' follow_active=False
+22:13:57 process_command study_intent=None
+22:14:02 POST_WAKE result: 'open'
+22:14:02 EXECUTING command: 'open'
+22:14:02 _safe_process_command received: 'open'
+22:14:02 process_command ENTERED with text='open'
+22:14:02 process_command t0='open' follow_active=False
+22:14:02 process_command study_intent=None
+22:14:15 POST_WAKE result: 'open'
+22:14:15 EXECUTING command: 'open'
+22:14:15 _safe_process_command received: 'open'
+22:14:15 process_command ENTERED with text='open'
+22:14:15 process_command t0='open' follow_active=False
+22:14:15 process_command study_intent=None
+22:14:24 POST_WAKE result: 'up'
+22:14:24 EXECUTING command: 'up'
+22:14:24 _safe_process_command received: 'up'
+22:14:24 process_command ENTERED with text='up'
+22:14:24 process_command t0='up' follow_active=False
+22:14:24 process_command study_intent=None
+22:14:32 POST_WAKE result: 'open'
+22:14:32 EXECUTING command: 'open'
+22:14:32 _safe_process_command received: 'open'
+22:14:32 process_command ENTERED with text='open'
+22:14:32 process_command t0='open' follow_active=False
+22:14:32 process_command study_intent=None
+22:14:39 POST_WAKE result: 'open steam'
+22:14:39 EXECUTING command: 'open steam'
+22:14:39 _safe_process_command received: 'open steam'
+22:14:39 process_command ENTERED with text='open steam'
+22:14:39 process_command t0='open steam' follow_active=False
+22:14:39 process_command study_intent=None
+22:15:12 POST_WAKE result: 'close'
+22:15:12 EXECUTING command: 'close'
+22:15:12 _safe_process_command received: 'close'
+22:15:12 process_command ENTERED with text='close'
+22:15:12 process_command t0='close' follow_active=False
+22:15:12 process_command study_intent=None
+22:15:24 POST_WAKE result: 'lock local mode'
+22:15:24 EXECUTING command: 'lock local mode'
+22:15:24 _safe_process_command received: 'lock local mode'
+22:15:24 process_command ENTERED with text='lock local mode'
+22:15:24 process_command t0='lock local mode' follow_active=False
+22:15:24 process_command study_intent=None
+22:15:31 POST_WAKE result: 'local mode'
+22:15:31 EXECUTING command: 'local mode'
+22:15:31 _safe_process_command received: 'local mode'
+22:15:31 CUSTOM_MODE matched! Calling process_command...
+22:15:31 process_command ENTERED with text='local mode'
+22:15:31 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+22:15:31 _execute_all: file exists=True
+22:15:31 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+22:15:31 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+22:15:31 slot done: open_app|yandex_browser
+22:15:31 _execute_all: slot 0 done
+22:15:31 _execute_all: slot 1 empty, skip
+22:15:31 _execute_all: slot 2 empty, skip
+22:15:31 _execute_all: executed 1 slot(s)
+22:15:32 process_command returned: True
+22:15:43 POST_WAKE result: 'None'
+22:16:10 POST_WAKE result: 'the more'
+22:16:10 EXECUTING command: 'the more'
+22:16:10 _safe_process_command received: 'the more'
+22:16:10 process_command ENTERED with text='the more'
+22:16:10 process_command t0='the more' follow_active=False
+22:16:10 process_command study_intent=None
+22:16:21 POST_WAKE result: 'local mode'
+22:16:21 EXECUTING command: 'local mode'
+22:16:21 _safe_process_command received: 'local mode'
+22:16:21 CUSTOM_MODE matched! Calling process_command...
+22:16:21 process_command ENTERED with text='local mode'
+22:16:21 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+22:16:21 _execute_all: file exists=True
+22:16:21 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+22:16:21 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+22:16:21 slot done: open_app|yandex_browser
+22:16:21 _execute_all: slot 0 done
+22:16:21 _execute_all: slot 1 empty, skip
+22:16:21 _execute_all: slot 2 empty, skip
+22:16:21 _execute_all: executed 1 slot(s)
+22:16:21 process_command returned: True
+22:17:27 POST_WAKE result: 'open'
+22:17:27 EXECUTING command: 'open'
+22:17:27 _safe_process_command received: 'open'
+22:17:27 process_command ENTERED with text='open'
+22:17:27 process_command t0='open' follow_active=False
+22:17:27 process_command study_intent=None
+22:17:38 POST_WAKE result: 'open calculator'
+22:17:38 EXECUTING command: 'open calculator'
+22:17:38 _safe_process_command received: 'open calculator'
+22:17:38 process_command ENTERED with text='open calculator'
+22:17:38 process_command t0='open calculator' follow_active=False
+22:17:38 process_command study_intent=None
+22:17:54 POST_WAKE result: 'local mode'
+22:17:54 EXECUTING command: 'local mode'
+22:17:54 _safe_process_command received: 'local mode'
+22:17:54 CUSTOM_MODE matched! Calling process_command...
+22:17:54 process_command ENTERED with text='local mode'
+22:17:54 _execute_all: config_path=C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\config.json
+22:17:54 _execute_all: file exists=True
+22:17:54 _execute_all: found 3 slots, cm={'enabled': True, 'slots': [{'action_type': 'open_app', 'target': 'yandex_browser', 'display_name': 'Yandex Browser'}, {'action_type': '', 'target': '', 'display_name': ''}, {'action_type': '', 'target': '', 'display_name': ''}]}
+22:17:54 _execute_all: slot 0 executing: open_app|yandex_browser|Yandex Browser
+22:17:54 slot done: open_app|yandex_browser
+22:17:54 _execute_all: slot 0 done
+22:17:54 _execute_all: slot 1 empty, skip
+22:17:54 _execute_all: slot 2 empty, skip
+22:17:54 _execute_all: executed 1 slot(s)
+22:17:54 process_command returned: True
+22:18:11 POST_WAKE result: 'open'
+22:18:11 EXECUTING command: 'open'
+22:18:11 _safe_process_command received: 'open'
+22:18:11 process_command ENTERED with text='open'
+22:18:11 process_command t0='open' follow_active=False
+22:18:11 process_command study_intent=None
+22:18:45 POST_WAKE result: 'revoke access'
+22:18:45 EXECUTING command: 'revoke access'
+22:18:45 _safe_process_command received: 'revoke access'
+22:19:03 POST_WAKE result: 'open google'
+22:19:03 EXECUTING command: 'open google'
+22:19:03 _safe_process_command received: 'open google'
+22:19:03 process_command ENTERED with text='open google'
+22:19:03 process_command t0='open google' follow_active=False
+22:19:03 process_command study_intent=None
+22:19:45 POST_WAKE result: 'open steam'
+22:19:45 EXECUTING command: 'open steam'
+22:19:45 _safe_process_command received: 'open steam'
+22:19:45 process_command ENTERED with text='open steam'
+22:19:45 process_command t0='open steam' follow_active=False
+22:19:45 process_command study_intent=None
+22:20:14 POST_WAKE result: 'open'
+22:20:14 EXECUTING command: 'open'
+22:20:14 _safe_process_command received: 'open'
+22:20:14 process_command ENTERED with text='open'
+22:20:14 process_command t0='open' follow_active=False
+22:20:14 process_command study_intent=None
+22:20:21 POST_WAKE result: 'open steam'
+22:20:21 EXECUTING command: 'open steam'
+22:20:21 _safe_process_command received: 'open steam'
+22:20:21 process_command ENTERED with text='open steam'
+22:20:21 process_command t0='open steam' follow_active=False
+22:20:21 process_command study_intent=None
+23:14:21 POST_WAKE result: 'quick no'
+23:14:21 EXECUTING command: 'quick no'
+23:14:21 _safe_process_command received: 'quick no'
+23:14:21 process_command ENTERED with text='quick no'
+23:14:21 process_command t0='quick no' follow_active=False
+23:14:21 process_command study_intent=None
+23:14:47 POST_WAKE result: 'local left'
+23:14:47 EXECUTING command: 'local left'
+23:14:47 _safe_process_command received: 'local left'
+23:14:47 process_command ENTERED with text='local left'
+23:14:47 process_command t0='local left' follow_active=False
+23:14:47 process_command study_intent=None
+23:19:09 POST_WAKE result: 'None'
+23:19:52 POST_WAKE result: 'None'
+23:23:10 POST_WAKE result: 'open sem'
+23:23:10 EXECUTING command: 'open sem'
+23:23:10 _safe_process_command received: 'open sem'
+23:23:10 process_command ENTERED with text='open sem'
+23:23:10 process_command t0='open sem' follow_active=False
+23:23:10 process_command study_intent=None
+23:23:17 POST_WAKE result: 'these new'
+23:23:17 EXECUTING command: 'these new'
+23:23:17 _safe_process_command received: 'these new'
+23:23:17 process_command ENTERED with text='these new'
+23:23:17 process_command t0='these new' follow_active=False
+23:23:17 process_command study_intent=None
+23:23:32 POST_WAKE result: 'on some'
+23:23:32 EXECUTING command: 'on some'
+23:23:32 _safe_process_command received: 'on some'
+23:23:32 process_command ENTERED with text='on some'
+23:23:32 process_command t0='on some' follow_active=False
+23:23:32 process_command study_intent=None
+23:25:23 POST_WAKE result: 'browser'
+23:25:23 EXECUTING command: 'browser'
+23:25:23 _safe_process_command received: 'browser'
+23:25:34 POST_WAKE result: 'None'
+23:25:43 POST_WAKE result: 'on steam'
+23:25:43 EXECUTING command: 'on steam'
+23:25:43 _safe_process_command received: 'on steam'
+23:25:49 POST_WAKE result: 'open steam'
+23:25:49 EXECUTING command: 'open steam'
+23:25:49 _safe_process_command received: 'open steam'
+23:26:23 POST_WAKE result: 'open steam'
+23:26:23 EXECUTING command: 'open steam'
+23:26:23 _safe_process_command received: 'open steam'
+23:26:23 process_command ENTERED with text='open steam'
+23:26:23 process_command t0='open steam' follow_active=False
+23:26:23 process_command study_intent=None
+23:26:43 POST_WAKE result: 'None'
+23:26:51 POST_WAKE result: 'None'
+23:27:16 POST_WAKE result: 'open steam'
+23:27:16 EXECUTING command: 'open steam'
+23:27:16 _safe_process_command received: 'open steam'
+23:27:35 POST_WAKE result: 'None'
+23:28:03 POST_WAKE result: 'sem'
+23:28:03 EXECUTING command: 'sem'
+23:28:03 _safe_process_command received: 'sem'
+23:28:08 POST_WAKE result: 'open steam'
+23:28:08 EXECUTING command: 'open steam'
+23:28:08 _safe_process_command received: 'open steam'
+23:30:14 POST_WAKE result: 'browser'
+23:30:14 EXECUTING command: 'browser'
+23:30:14 _safe_process_command received: 'browser'
+23:30:14 process_command ENTERED with text='browser'
+23:30:14 process_command t0='browser' follow_active=False
+23:30:14 process_command study_intent=None
+23:30:32 POST_WAKE result: '__SKIP_WAKE_COMMAND__'
+23:30:41 POST_WAKE result: 'open steam'
+23:30:41 EXECUTING command: 'open steam'
+23:30:41 _safe_process_command received: 'open steam'
+23:30:41 process_command ENTERED with text='open steam'
+23:30:41 process_command t0='open steam' follow_active=False
+23:30:41 process_command study_intent=None
+23:34:36 POST_WAKE result: 'None'
+23:36:38 POST_WAKE result: 'None'
+23:38:24 POST_WAKE result: 'None'
+23:45:47 POST_WAKE result: 'None'
+23:47:02 POST_WAKE result: 'ah'
+23:47:02 EXECUTING command: 'ah'
+23:47:02 _safe_process_command received: 'ah'
+23:51:42 POST_WAKE result: 'None'
+23:51:48 POST_WAKE result: 'None'
+00:04:55 POST_WAKE result: 'sem'
+00:04:55 EXECUTING command: 'sem'
+00:04:55 _safe_process_command received: 'sem'
+00:04:55 process_command ENTERED with text='sem'
+00:04:55 process_command t0='sem' follow_active=False
+00:04:55 process_command study_intent=None
+00:05:01 POST_WAKE result: 'None'
+00:05:06 POST_WAKE result: 'open steam'
+00:05:06 EXECUTING command: 'open steam'
+00:05:06 _safe_process_command received: 'open steam'
+00:05:06 process_command ENTERED with text='open steam'
+00:05:06 process_command t0='open steam' follow_active=False
+00:05:06 process_command study_intent=None
+00:05:45 POST_WAKE result: 'that's the'
+00:05:45 EXECUTING command: 'that's the'
+00:05:45 _safe_process_command received: 'that's the'
+00:05:45 process_command ENTERED with text='that's the'
+00:05:45 process_command t0='that's the' follow_active=False
+00:05:45 process_command study_intent=None
+00:05:51 POST_WAKE result: 'open steam'
+00:05:51 EXECUTING command: 'open steam'
+00:05:51 _safe_process_command received: 'open steam'
+00:05:51 process_command ENTERED with text='open steam'
+00:05:51 process_command t0='open steam' follow_active=False
+00:05:51 process_command study_intent=None
+00:06:14 POST_WAKE result: 'sem'
+00:06:14 EXECUTING command: 'sem'
+00:06:14 _safe_process_command received: 'sem'
+00:06:14 process_command ENTERED with text='sem'
+00:06:14 process_command t0='sem' follow_active=False
+00:06:14 process_command study_intent=None
+00:06:33 POST_WAKE result: 'open steam'
+00:06:33 EXECUTING command: 'open steam'
+00:06:33 _safe_process_command received: 'open steam'
+00:06:33 process_command ENTERED with text='open steam'
+00:06:33 process_command t0='open steam' follow_active=False
+00:06:33 process_command study_intent=None
+00:06:59 POST_WAKE result: 'open steam'
+00:06:59 EXECUTING command: 'open steam'
+00:06:59 _safe_process_command received: 'open steam'
+00:06:59 process_command ENTERED with text='open steam'
+00:06:59 process_command t0='open steam' follow_active=False
+00:06:59 process_command study_intent=None
+00:10:32 POST_WAKE result: 'team'
+00:10:32 EXECUTING command: 'team'
+00:10:32 _safe_process_command received: 'team'
+00:10:43 POST_WAKE result: 'None'
+00:10:49 POST_WAKE result: 'open steam'
+00:10:49 EXECUTING command: 'open steam'
+00:10:49 _safe_process_command received: 'open steam'
+00:10:58 POST_WAKE result: 'None'
+00:11:06 POST_WAKE result: 'open steam'
+00:11:06 EXECUTING command: 'open steam'
+00:11:06 _safe_process_command received: 'open steam'
+00:11:48 POST_WAKE result: 'None'
+00:11:59 POST_WAKE result: 'browser'
+00:11:59 EXECUTING command: 'browser'
+00:11:59 _safe_process_command received: 'browser'
+00:12:28 POST_WAKE result: 'open steam'
+00:12:28 EXECUTING command: 'open steam'
+00:12:28 _safe_process_command received: 'open steam'
+00:14:20 POST_WAKE result: 'None'
+00:19:26 POST_WAKE result: 'open browser'
+00:19:26 EXECUTING command: 'open browser'
+00:19:26 _safe_process_command received: 'open browser'
+00:20:15 POST_WAKE result: 'None'
+00:20:21 POST_WAKE result: 'browser'
+00:20:21 EXECUTING command: 'browser'
+00:20:21 _safe_process_command received: 'browser'
+00:20:35 POST_WAKE result: 'None'
+00:20:57 POST_WAKE result: 'open steam'
+00:20:57 EXECUTING command: 'open steam'
+00:20:57 _safe_process_command received: 'open steam'
+00:27:43 POST_WAKE result: 'open browser'
+00:27:43 EXECUTING command: 'open browser'
+00:27:43 _safe_process_command received: 'open browser'
+00:28:36 POST_WAKE result: 'None'
+00:29:05 POST_WAKE result: 'None'
+00:29:16 POST_WAKE result: 'open the browser'
+00:29:16 EXECUTING command: 'open the browser'
+00:29:16 _safe_process_command received: 'open the browser'
+00:29:50 POST_WAKE result: 'None'
+00:30:52 POST_WAKE result: 'open steam'
+00:30:52 EXECUTING command: 'open steam'
+00:30:52 _safe_process_command received: 'open steam'
+00:31:41 POST_WAKE result: 'None'
+00:31:47 POST_WAKE result: 'open steam'
+00:31:47 EXECUTING command: 'open steam'
+00:31:47 _safe_process_command received: 'open steam'
+00:32:02 POST_WAKE result: 'open steam'
+00:32:02 EXECUTING command: 'open steam'
+00:32:02 _safe_process_command received: 'open steam'
+00:32:12 POST_WAKE result: 'open steam'
+00:32:12 EXECUTING command: 'open steam'
+00:32:12 _safe_process_command received: 'open steam'
+00:34:46 POST_WAKE result: 'None'
+00:34:51 POST_WAKE result: 'open steam'
+00:34:51 EXECUTING command: 'open steam'
+00:34:51 _safe_process_command received: 'open steam'
+00:34:51 process_command ENTERED with text='open steam'
+00:34:51 process_command t0='open steam' follow_active=False
+00:34:51 process_command study_intent=None
+00:36:04 POST_WAKE result: 'open'
+00:36:04 EXECUTING command: 'open'
+00:36:04 _safe_process_command received: 'open'
+00:36:15 POST_WAKE result: 'process'
+00:36:15 EXECUTING command: 'process'
+00:36:15 _safe_process_command received: 'process'
+00:36:15 process_command ENTERED with text='process'
+00:36:15 process_command t0='process' follow_active=False
+00:36:15 process_command study_intent=None
+00:36:19 POST_WAKE result: 'grant access'
+00:36:19 EXECUTING command: 'grant access'
+00:36:19 _safe_process_command received: 'grant access'
+00:36:25 POST_WAKE result: 'that does it'
+00:36:25 EXECUTING command: 'that does it'
+00:36:25 _safe_process_command received: 'that does it'
+00:36:25 process_command ENTERED with text='that does it'
+00:36:25 process_command t0='that does it' follow_active=False
+00:36:25 process_command study_intent=None
+00:36:31 POST_WAKE result: 'grant access'
+00:36:31 EXECUTING command: 'grant access'
+00:36:31 _safe_process_command received: 'grant access'
+00:37:01 POST_WAKE result: 'None'
+00:37:08 POST_WAKE result: 'opens you'
+00:37:08 EXECUTING command: 'opens you'
+00:37:08 _safe_process_command received: 'opens you'
+00:37:08 process_command ENTERED with text='opens you'
+00:37:08 process_command t0='opens you' follow_active=False
+00:37:08 process_command study_intent=None
+00:37:16 POST_WAKE result: 'orbits the'
+00:37:16 EXECUTING command: 'orbits the'
+00:37:16 _safe_process_command received: 'orbits the'
+00:37:16 process_command ENTERED with text='orbits the'
+00:37:16 process_command t0='orbits the' follow_active=False
+00:37:16 process_command study_intent=None
+00:37:24 POST_WAKE result: 'are you'
+00:37:24 EXECUTING command: 'are you'
+00:37:24 _safe_process_command received: 'are you'
+00:37:24 process_command ENTERED with text='are you'
+00:37:24 process_command t0='are you' follow_active=False
+00:37:24 process_command study_intent=None
+00:37:31 POST_WAKE result: 'view'
+00:37:31 EXECUTING command: 'view'
+00:37:31 _safe_process_command received: 'view'
+00:37:31 process_command ENTERED with text='view'
+00:37:31 process_command t0='view' follow_active=False
+00:37:31 process_command study_intent=None
+00:37:44 POST_WAKE result: 'None'
+00:37:57 POST_WAKE result: 'open the'
+00:37:57 EXECUTING command: 'open the'
+00:37:57 _safe_process_command received: 'open the'
+00:37:57 process_command ENTERED with text='open the'
+00:37:57 process_command t0='open the' follow_active=False
+00:37:57 process_command study_intent=None
+00:38:45 POST_WAKE result: 'open steam'
+00:38:45 EXECUTING command: 'open steam'
+00:38:45 _safe_process_command received: 'open steam'
+00:38:45 process_command ENTERED with text='open steam'
+00:38:45 process_command t0='open steam' follow_active=False
+00:38:45 process_command study_intent=None
+00:51:59 POST_WAKE result: 'grant access'
+00:51:59 EXECUTING command: 'grant access'
+00:51:59 _safe_process_command received: 'grant access'
+00:53:36 POST_WAKE result: 'open steam'
+00:53:36 EXECUTING command: 'open steam'
+00:53:36 _safe_process_command received: 'open steam'
+00:53:36 process_command ENTERED with text='open steam'
+00:53:36 process_command t0='open steam' follow_active=False
+00:53:36 process_command study_intent=None
+00:53:52 POST_WAKE result: 'None'
+00:53:59 POST_WAKE result: 'open steam'
+00:53:59 EXECUTING command: 'open steam'
+00:53:59 _safe_process_command received: 'open steam'
+00:53:59 process_command ENTERED with text='open steam'
+00:53:59 process_command t0='open steam' follow_active=False
+00:53:59 process_command study_intent=None
+00:54:04 POST_WAKE result: 'browser'
+00:54:04 EXECUTING command: 'browser'
+00:54:04 _safe_process_command received: 'browser'
+00:54:04 process_command ENTERED with text='browser'
+00:54:04 process_command t0='browser' follow_active=False
+00:54:04 process_command study_intent=None
+00:54:14 POST_WAKE result: 'browser'
+00:54:14 EXECUTING command: 'browser'
+00:54:14 _safe_process_command received: 'browser'
+00:54:14 process_command ENTERED with text='browser'
+00:54:14 process_command t0='browser' follow_active=False
+00:54:14 process_command study_intent=None
+01:05:24 POST_WAKE result: 'None'
+01:05:53 POST_WAKE result: 'None'
+10:17:29 POST_WAKE result: 'open browser'
+10:17:29 EXECUTING command: 'open browser'
+10:17:29 _safe_process_command received: 'open browser'
+10:18:06 POST_WAKE result: 'for'
+10:18:06 EXECUTING command: 'for'
+10:18:06 _safe_process_command received: 'for'
+10:18:06 process_command ENTERED with text='for'
+10:18:06 process_command t0='for' follow_active=False
+10:18:06 process_command study_intent=None
+10:18:23 POST_WAKE result: 'None'
+10:18:30 POST_WAKE result: 'sir'
+10:18:30 EXECUTING command: 'sir'
+10:18:30 _safe_process_command received: 'sir'
+10:18:43 POST_WAKE result: 'open steam'
+10:18:43 EXECUTING command: 'open steam'
+10:18:43 _safe_process_command received: 'open steam'
+10:18:43 process_command ENTERED with text='open steam'
+10:18:43 process_command t0='open steam' follow_active=False
+10:18:43 process_command study_intent=None
+10:19:10 POST_WAKE result: 'revoke access'
+10:19:10 EXECUTING command: 'revoke access'
+10:19:10 _safe_process_command received: 'revoke access'
+10:20:07 POST_WAKE result: 'open steam'
+10:20:07 EXECUTING command: 'open steam'
+10:20:07 _safe_process_command received: 'open steam'
+10:20:07 process_command ENTERED with text='open steam'
+10:20:07 process_command t0='open steam' follow_active=False
+10:20:07 process_command study_intent=None
+10:20:44 POST_WAKE result: 'None'
+10:22:11 POST_WAKE result: 'open'
+10:22:11 EXECUTING command: 'open'
+10:22:11 _safe_process_command received: 'open'
+10:22:11 process_command ENTERED with text='open'
+10:22:11 process_command t0='open' follow_active=False
+10:22:11 process_command study_intent=None
+10:22:44 POST_WAKE result: 'open'
+10:22:44 EXECUTING command: 'open'
+10:22:44 _safe_process_command received: 'open'
+10:22:44 process_command ENTERED with text='open'
+10:22:44 process_command t0='open' follow_active=False
+10:22:44 process_command study_intent=None
+10:23:51 POST_WAKE result: 'open steam'
+10:23:51 EXECUTING command: 'open steam'
+10:23:51 _safe_process_command received: 'open steam'
+10:23:51 process_command ENTERED with text='open steam'
+10:23:51 process_command t0='open steam' follow_active=False
+10:23:51 process_command study_intent=None
+10:24:14 POST_WAKE result: 'open'
+10:24:14 EXECUTING command: 'open'
+10:24:14 _safe_process_command received: 'open'
+10:24:14 process_command ENTERED with text='open'
+10:24:14 process_command t0='open' follow_active=False
+10:24:14 process_command study_intent=None
+10:25:16 POST_WAKE result: 'open four'
+10:25:16 EXECUTING command: 'open four'
+10:25:16 _safe_process_command received: 'open four'
+10:25:16 process_command ENTERED with text='open four'
+10:25:16 process_command t0='open four' follow_active=False
+10:25:16 process_command study_intent=None
+10:27:38 POST_WAKE result: 'one'
+10:27:38 EXECUTING command: 'one'
+10:27:38 _safe_process_command received: 'one'
+10:27:49 POST_WAKE result: 'sir'
+10:27:49 EXECUTING command: 'sir'
+10:27:49 _safe_process_command received: 'sir'
+10:27:55 POST_WAKE result: 'open sir'
+10:27:55 EXECUTING command: 'open sir'
+10:27:55 _safe_process_command received: 'open sir'
+10:27:55 process_command ENTERED with text='open sir'
+10:27:55 process_command t0='open sir' follow_active=False
+10:27:55 process_command study_intent=None
+10:28:03 POST_WAKE result: 'open steam'
+10:28:03 EXECUTING command: 'open steam'
+10:28:03 _safe_process_command received: 'open steam'
+10:28:03 process_command ENTERED with text='open steam'
+10:28:03 process_command t0='open steam' follow_active=False
+10:28:03 process_command study_intent=None
+10:28:25 POST_WAKE result: 'open steam'
+10:28:25 EXECUTING command: 'open steam'
+10:28:25 _safe_process_command received: 'open steam'
+10:28:25 process_command ENTERED with text='open steam'
+10:28:25 process_command t0='open steam' follow_active=False
+10:28:25 process_command study_intent=None
+10:28:30 POST_WAKE result: 'close steam'
+10:28:30 EXECUTING command: 'close steam'
+10:28:30 _safe_process_command received: 'close steam'
+10:28:30 process_command ENTERED with text='close steam'
+10:28:31 process_command t0='close steam' follow_active=False
+10:28:31 process_command study_intent=None
+10:29:00 POST_WAKE result: 'open steam'
+10:29:00 EXECUTING command: 'open steam'
+10:29:00 _safe_process_command received: 'open steam'
+10:29:00 process_command ENTERED with text='open steam'
+10:29:00 process_command t0='open steam' follow_active=False
+10:29:00 process_command study_intent=None
+10:29:07 POST_WAKE result: 'close steam'
+10:29:07 EXECUTING command: 'close steam'
+10:29:07 _safe_process_command received: 'close steam'
+10:29:07 process_command ENTERED with text='close steam'
+10:29:07 process_command t0='close steam' follow_active=False
+10:29:07 process_command study_intent=None
+10:29:45 POST_WAKE result: 'open calculator'
+10:29:45 EXECUTING command: 'open calculator'
+10:29:45 _safe_process_command received: 'open calculator'
+10:29:45 process_command ENTERED with text='open calculator'
+10:29:45 process_command t0='open calculator' follow_active=False
+10:29:45 process_command study_intent=None
+10:29:50 POST_WAKE result: 'close calculator'
+10:29:50 EXECUTING command: 'close calculator'
+10:29:50 _safe_process_command received: 'close calculator'
+10:29:50 process_command ENTERED with text='close calculator'
+10:29:50 process_command t0='close calculator' follow_active=False
+10:29:50 process_command study_intent=None
+10:30:44 POST_WAKE result: 'browser'
+10:30:44 EXECUTING command: 'browser'
+10:30:44 _safe_process_command received: 'browser'
+10:30:44 process_command ENTERED with text='browser'
+10:30:44 process_command t0='browser' follow_active=False
+10:30:44 process_command study_intent=None
+10:30:53 POST_WAKE result: 'music'
+10:30:53 EXECUTING command: 'music'
+10:30:53 _safe_process_command received: 'music'
+10:30:54 process_command ENTERED with text='music'
+10:30:54 process_command t0='music' follow_active=False
+10:30:54 process_command study_intent=None
+10:30:54 play_music matched: t0='music'
+10:31:04 _safe_process_command received: 'though'
+10:31:04 process_command ENTERED with text='though'
+10:31:04 process_command t0='though' follow_active=False
+10:31:04 process_command study_intent=None
+10:31:16 POST_WAKE result: 'yandex music'
+10:31:16 EXECUTING command: 'yandex music'
+10:31:16 _safe_process_command received: 'yandex music'
+10:31:16 process_command ENTERED with text='yandex music'
+10:31:16 process_command t0='yandex music' follow_active=False
+10:31:16 process_command study_intent=None
+10:31:16 play_music matched: t0='yandex music'
+10:31:26 _safe_process_command received: 'one'
+10:31:26 process_command ENTERED with text='one'
+10:31:26 process_command t0='one' follow_active=False
+10:31:26 process_command study_intent=None
+10:33:27 POST_WAKE result: 'move'
+10:33:27 EXECUTING command: 'move'
+10:33:27 _safe_process_command received: 'move'
+10:33:32 POST_WAKE result: 'music'
+10:33:32 EXECUTING command: 'music'
+10:33:32 _safe_process_command received: 'music'
+10:33:32 process_command ENTERED with text='music'
+10:33:32 process_command t0='music' follow_active=False
+10:33:32 process_command study_intent=None
+10:33:32 play_music matched: t0='music'
+10:33:42 _safe_process_command received: 'huh'
+10:33:52 POST_WAKE result: 'music'
+10:33:52 EXECUTING command: 'music'
+10:33:52 _safe_process_command received: 'music'
+10:33:52 process_command ENTERED with text='music'
+10:33:52 process_command t0='music' follow_active=False
+10:33:52 process_command study_intent=None
+10:33:52 play_music matched: t0='music'
+10:57:07 POST_WAKE result: 'music'
+10:57:07 EXECUTING command: 'music'
+10:57:07 _safe_process_command received: 'music'
+10:57:07 process_command ENTERED with text='music'
+10:57:07 process_command t0='music' follow_active=False
+10:57:07 process_command study_intent=None
+10:57:07 play_music matched: t0='music'
+10:57:17 _safe_process_command received: 'ten'
+10:57:58 POST_WAKE result: 'yandex music'
+10:57:58 EXECUTING command: 'yandex music'
+10:57:58 _safe_process_command received: 'yandex music'
+10:57:58 process_command ENTERED with text='yandex music'
+10:57:58 process_command t0='yandex music' follow_active=False
+10:57:58 process_command study_intent=None
+10:57:58 play_music matched: t0='yandex music'
+10:58:08 _safe_process_command received: 'ah'
+10:59:37 POST_WAKE result: 'None'
+10:59:45 POST_WAKE result: 'music'
+10:59:45 EXECUTING command: 'music'
+10:59:45 _safe_process_command received: 'music'
+10:59:45 process_command ENTERED with text='music'
+10:59:45 process_command t0='music' follow_active=False
+10:59:45 process_command study_intent=None
+10:59:45 play_music matched: t0='music'
+11:05:27 POST_WAKE result: 'None'
+11:10:09 POST_WAKE result: 'None'
+11:17:12 POST_WAKE result: '__SKIP_WAKE_COMMAND__'
+11:22:22 POST_WAKE result: 'music'
+11:22:22 EXECUTING command: 'music'
+11:22:22 _safe_process_command received: 'music'
+11:22:22 process_command ENTERED with text='music' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:22:22 process_command t0='music' follow_active=False
+11:22:22 process_command study_intent=None
+11:22:22 CHECKPOINT play_music: t0='music' _local_intent='play_music'
+11:22:22 play_music matched: t0='music'
+11:22:32 _safe_process_command received: 'it wouldn't know it that line of the'
+11:22:32 process_command ENTERED with text='it wouldn't know it that line of the' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:22:32 process_command t0='it wouldn't know it that line of the' follow_active=False
+11:22:32 process_command study_intent=None
+11:22:32 CHECKPOINT play_music: t0='it wouldn't know it that line of the' _local_intent='None'
+11:22:32 EXIT not_command_like: t0='it wouldn't know it that line of the'
+11:22:48 POST_WAKE result: 'yandex music'
+11:22:48 EXECUTING command: 'yandex music'
+11:22:48 _safe_process_command received: 'yandex music'
+11:22:48 process_command ENTERED with text='yandex music' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:22:48 process_command t0='yandex music' follow_active=False
+11:22:48 process_command study_intent=None
+11:22:48 CHECKPOINT play_music: t0='yandex music' _local_intent='play_music'
+11:22:48 play_music matched: t0='yandex music'
+11:23:51 POST_WAKE result: 'music'
+11:23:51 EXECUTING command: 'music'
+11:23:51 _safe_process_command received: 'music'
+11:23:51 process_command ENTERED with text='music' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:23:51 process_command t0='music' follow_active=False
+11:23:51 process_command study_intent=None
+11:23:51 CHECKPOINT play_music: t0='music' _local_intent='play_music'
+11:23:51 play_music matched: t0='music'
+11:24:01 _safe_process_command received: 'music an hour'
+11:24:15 POST_WAKE result: 'yandex music'
+11:24:15 EXECUTING command: 'yandex music'
+11:24:15 _safe_process_command received: 'yandex music'
+11:24:15 process_command ENTERED with text='yandex music' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:24:15 process_command t0='yandex music' follow_active=False
+11:24:15 process_command study_intent=None
+11:24:15 CHECKPOINT play_music: t0='yandex music' _local_intent='play_music'
+11:24:15 play_music matched: t0='yandex music'
+11:24:26 _safe_process_command received: 'bonus how have a washer will die for sale as the more than one problem closer'
+11:25:18 POST_WAKE result: 'more'
+11:25:18 EXECUTING command: 'more'
+11:25:18 _safe_process_command received: 'more'
+11:25:18 process_command ENTERED with text='more' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:25:18 process_command t0='more' follow_active=False
+11:25:18 process_command study_intent=None
+11:25:47 POST_WAKE result: 'launch spotify'
+11:25:47 EXECUTING command: 'launch spotify'
+11:25:47 _safe_process_command received: 'launch spotify'
+11:27:19 POST_WAKE result: 'more'
+11:27:19 EXECUTING command: 'more'
+11:27:19 _safe_process_command received: 'more'
+11:27:32 POST_WAKE result: 'mood'
+11:27:32 EXECUTING command: 'mood'
+11:27:32 _safe_process_command received: 'mood'
+11:27:59 POST_WAKE result: 'confirm click left select'
+11:27:59 EXECUTING command: 'confirm click left select'
+11:27:59 _safe_process_command received: 'confirm click left select'
+11:33:52 POST_WAKE result: 'undo'
+11:33:52 EXECUTING command: 'undo'
+11:33:52 _safe_process_command received: 'undo'
+11:44:22 POST_WAKE result: 'music'
+11:44:22 EXECUTING command: 'music'
+11:44:22 _safe_process_command received: 'music'
+11:44:38 POST_WAKE result: 'music'
+11:44:38 EXECUTING command: 'music'
+11:44:38 _safe_process_command received: 'music'
+11:44:38 process_command ENTERED with text='music' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:44:38 process_command t0='music' follow_active=False
+11:44:38 process_command study_intent=None
+11:44:38 CHECKPOINT play_music: t0='music' _local_intent='play_music'
+11:44:38 play_music matched: t0='music'
+11:44:49 _safe_process_command received: 'google'
+11:44:49 process_command ENTERED with text='google' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:44:49 process_command t0='google' follow_active=False
+11:44:49 process_command study_intent=None
+11:44:49 CHECKPOINT play_music: t0='google' _local_intent='None'
+11:45:10 POST_WAKE result: 'None'
+11:45:39 POST_WAKE result: 'oh'
+11:45:39 EXECUTING command: 'oh'
+11:45:39 _safe_process_command received: 'oh'
+11:45:39 process_command ENTERED with text='oh' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:45:39 process_command t0='oh' follow_active=False
+11:45:39 process_command study_intent=None
+11:45:39 CHECKPOINT play_music: t0='oh' _local_intent='None'
+11:45:39 EXIT not_command_like: t0='oh'
+11:54:29 POST_WAKE result: 'music'
+11:54:29 EXECUTING command: 'music'
+11:54:29 _safe_process_command received: 'music'
+11:54:29 process_command ENTERED with text='music' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:54:29 process_command t0='music' follow_active=False
+11:54:29 process_command study_intent=None
+11:54:29 CHECKPOINT play_music: t0='music' _local_intent='play_music'
+11:54:29 play_music matched: t0='music'
+11:54:39 _safe_process_command received: 'one'
+11:54:39 process_command ENTERED with text='one' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:54:39 process_command t0='one' follow_active=False
+11:54:39 process_command study_intent=None
+11:54:39 CHECKPOINT play_music: t0='one' _local_intent='None'
+11:54:39 EXIT not_command_like: t0='one'
+11:54:49 POST_WAKE result: 'calculator'
+11:54:49 EXECUTING command: 'calculator'
+11:54:49 _safe_process_command received: 'calculator'
+11:54:49 process_command ENTERED with text='calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:54:49 process_command t0='calculator' follow_active=False
+11:54:49 process_command study_intent=None
+11:54:49 CHECKPOINT play_music: t0='calculator' _local_intent='None'
+11:54:54 POST_WAKE result: 'calculator close'
+11:54:54 EXECUTING command: 'calculator close'
+11:54:54 _safe_process_command received: 'calculator close'
+11:54:54 process_command ENTERED with text='calculator close' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:54:54 process_command t0='calculator close' follow_active=False
+11:54:54 process_command study_intent=None
+11:54:54 CHECKPOINT play_music: t0='calculator close' _local_intent='None'
+11:54:59 POST_WAKE result: 'close calculator'
+11:54:59 EXECUTING command: 'close calculator'
+11:54:59 _safe_process_command received: 'close calculator'
+11:54:59 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:54:59 process_command t0='close calculator' follow_active=False
+11:54:59 process_command study_intent=None
+11:55:48 POST_WAKE result: 'cursor'
+11:55:48 EXECUTING command: 'cursor'
+11:55:48 _safe_process_command received: 'cursor'
+11:55:48 process_command ENTERED with text='cursor' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:55:48 process_command t0='cursor' follow_active=False
+11:55:48 process_command study_intent=None
+11:55:48 CHECKPOINT play_music: t0='cursor' _local_intent='None'
+11:55:48 EXIT not_command_like: t0='cursor'
+11:55:55 POST_WAKE result: 'calculator'
+11:55:55 EXECUTING command: 'calculator'
+11:55:55 _safe_process_command received: 'calculator'
+11:55:55 process_command ENTERED with text='calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:55:55 process_command t0='calculator' follow_active=False
+11:55:55 process_command study_intent=None
+11:55:55 CHECKPOINT play_music: t0='calculator' _local_intent='None'
+11:56:00 POST_WAKE result: 'close calculator'
+11:56:00 EXECUTING command: 'close calculator'
+11:56:00 _safe_process_command received: 'close calculator'
+11:56:00 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:56:00 process_command t0='close calculator' follow_active=False
+11:56:00 process_command study_intent=None
+11:56:18 POST_WAKE result: 'music'
+11:56:18 EXECUTING command: 'music'
+11:56:18 _safe_process_command received: 'music'
+11:56:18 process_command ENTERED with text='music' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:56:18 process_command t0='music' follow_active=False
+11:56:18 process_command study_intent=None
+11:56:18 CHECKPOINT play_music: t0='music' _local_intent='play_music'
+11:56:18 play_music matched: t0='music'
+11:57:15 POST_WAKE result: 'calculator'
+11:57:15 EXECUTING command: 'calculator'
+11:57:15 _safe_process_command received: 'calculator'
+11:57:15 process_command ENTERED with text='calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:57:15 process_command t0='calculator' follow_active=False
+11:57:15 process_command study_intent=None
+11:57:15 CHECKPOINT play_music: t0='calculator' _local_intent='None'
+11:57:20 POST_WAKE result: 'close calculator'
+11:57:20 EXECUTING command: 'close calculator'
+11:57:20 _safe_process_command received: 'close calculator'
+11:57:20 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:57:20 process_command t0='close calculator' follow_active=False
+11:57:20 process_command study_intent=None
+11:59:37 POST_WAKE result: 'open steam'
+11:59:37 EXECUTING command: 'open steam'
+11:59:37 _safe_process_command received: 'open steam'
+11:59:37 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:59:37 process_command t0='open steam' follow_active=False
+11:59:37 process_command study_intent=None
+11:59:37 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+11:59:56 POST_WAKE result: 'open calculator'
+11:59:56 EXECUTING command: 'open calculator'
+11:59:56 _safe_process_command received: 'open calculator'
+11:59:56 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+11:59:56 process_command t0='open calculator' follow_active=False
+11:59:56 process_command study_intent=None
+11:59:56 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+12:02:08 POST_WAKE result: 'open steam'
+12:02:08 EXECUTING command: 'open steam'
+12:02:08 _safe_process_command received: 'open steam'
+12:02:08 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:02:08 process_command t0='open steam' follow_active=False
+12:02:08 process_command study_intent=None
+12:02:08 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:02:21 POST_WAKE result: 'open steam'
+12:02:21 EXECUTING command: 'open steam'
+12:02:21 _safe_process_command received: 'open steam'
+12:02:21 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:02:21 process_command t0='open steam' follow_active=False
+12:02:21 process_command study_intent=None
+12:02:21 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:03:22 POST_WAKE result: 'open steam'
+12:03:22 EXECUTING command: 'open steam'
+12:03:22 _safe_process_command received: 'open steam'
+12:03:22 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:03:22 process_command t0='open steam' follow_active=False
+12:03:22 process_command study_intent=None
+12:03:22 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:03:43 POST_WAKE result: 'open steam'
+12:03:43 EXECUTING command: 'open steam'
+12:03:43 _safe_process_command received: 'open steam'
+12:03:43 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:03:43 process_command t0='open steam' follow_active=False
+12:03:43 process_command study_intent=None
+12:03:43 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:03:57 POST_WAKE result: 'blue blue'
+12:03:57 EXECUTING command: 'blue blue'
+12:03:57 _safe_process_command received: 'blue blue'
+12:04:07 POST_WAKE result: 'open steam'
+12:04:07 EXECUTING command: 'open steam'
+12:04:07 _safe_process_command received: 'open steam'
+12:04:07 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:04:07 process_command t0='open steam' follow_active=False
+12:04:07 process_command study_intent=None
+12:04:07 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:04:13 POST_WAKE result: 'shutdown'
+12:04:13 EXECUTING command: 'shutdown'
+12:04:13 _safe_process_command received: 'shutdown'
+12:04:13 process_command ENTERED with text='shutdown' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:04:13 process_command t0='shutdown' follow_active=False
+12:04:13 process_command study_intent=None
+12:09:23 POST_WAKE result: 'open steam'
+12:09:23 EXECUTING command: 'open steam'
+12:09:23 _safe_process_command received: 'open steam'
+12:09:23 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:09:23 process_command t0='open steam' follow_active=False
+12:09:23 process_command study_intent=None
+12:09:23 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:09:36 POST_WAKE result: 'open calculator'
+12:09:36 EXECUTING command: 'open calculator'
+12:09:36 _safe_process_command received: 'open calculator'
+12:09:46 POST_WAKE result: 'grant access'
+12:09:46 EXECUTING command: 'grant access'
+12:09:46 _safe_process_command received: 'grant access'
+12:10:30 POST_WAKE result: 'open steam'
+12:10:30 EXECUTING command: 'open steam'
+12:10:30 _safe_process_command received: 'open steam'
+12:12:30 POST_WAKE result: 'local calc'
+12:12:30 EXECUTING command: 'local calc'
+12:12:30 _safe_process_command received: 'local calc'
+12:12:50 POST_WAKE result: 'close that'
+12:12:50 EXECUTING command: 'close that'
+12:12:50 _safe_process_command received: 'close that'
+12:13:03 POST_WAKE result: 'local mode on local'
+12:13:03 EXECUTING command: 'local mode on local'
+12:13:03 _safe_process_command received: 'local mode on local'
+12:13:52 POST_WAKE result: 'go four'
+12:13:52 EXECUTING command: 'go four'
+12:13:52 _safe_process_command received: 'go four'
+12:20:30 POST_WAKE result: 'one more'
+12:20:30 EXECUTING command: 'one more'
+12:20:30 _safe_process_command received: 'one more'
+12:21:10 POST_WAKE result: 'cancel'
+12:21:10 EXECUTING command: 'cancel'
+12:21:10 _safe_process_command received: 'cancel'
+12:21:10 process_command ENTERED with text='cancel' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:21:10 process_command t0='cancel' follow_active=False
+12:21:10 process_command study_intent=None
+12:21:15 POST_WAKE result: 'revoke access'
+12:21:15 EXECUTING command: 'revoke access'
+12:21:15 _safe_process_command received: 'revoke access'
+12:21:37 POST_WAKE result: 'open four'
+12:21:37 EXECUTING command: 'open four'
+12:21:37 _safe_process_command received: 'open four'
+12:21:37 process_command ENTERED with text='open four' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:21:37 process_command t0='open four' follow_active=False
+12:21:37 process_command study_intent=None
+12:21:44 POST_WAKE result: 'open four'
+12:21:44 EXECUTING command: 'open four'
+12:21:44 _safe_process_command received: 'open four'
+12:21:44 process_command ENTERED with text='open four' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:21:44 process_command t0='open four' follow_active=False
+12:21:44 process_command study_intent=None
+12:21:54 POST_WAKE result: 'open steam'
+12:21:54 EXECUTING command: 'open steam'
+12:21:54 _safe_process_command received: 'open steam'
+12:21:54 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:21:54 process_command t0='open steam' follow_active=False
+12:21:54 process_command study_intent=None
+12:21:54 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:22:07 POST_WAKE result: 'open steam'
+12:22:07 EXECUTING command: 'open steam'
+12:22:07 _safe_process_command received: 'open steam'
+12:22:18 POST_WAKE result: 'grant access'
+12:22:18 EXECUTING command: 'grant access'
+12:22:18 _safe_process_command received: 'grant access'
+12:22:54 POST_WAKE result: 'open steam'
+12:22:54 EXECUTING command: 'open steam'
+12:22:54 _safe_process_command received: 'open steam'
+12:22:54 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:22:54 process_command t0='open steam' follow_active=False
+12:22:54 process_command study_intent=None
+12:22:54 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:25:24 POST_WAKE result: 'shut up'
+12:25:24 EXECUTING command: 'shut up'
+12:25:24 _safe_process_command received: 'shut up'
+12:25:53 POST_WAKE result: 'None'
+12:28:35 POST_WAKE result: 'open steam'
+12:28:35 EXECUTING command: 'open steam'
+12:28:35 _safe_process_command received: 'open steam'
+12:28:35 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:28:35 process_command t0='open steam' follow_active=False
+12:28:35 process_command study_intent=None
+12:28:35 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:28:45 POST_WAKE result: 'close steam'
+12:28:45 EXECUTING command: 'close steam'
+12:28:45 _safe_process_command received: 'close steam'
+12:28:45 process_command ENTERED with text='close steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:28:45 process_command t0='close steam' follow_active=False
+12:28:45 process_command study_intent=None
+12:29:03 POST_WAKE result: 'open'
+12:29:04 EXECUTING command: 'open'
+12:29:04 _safe_process_command received: 'open'
+12:29:04 process_command ENTERED with text='open' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:29:04 process_command t0='open' follow_active=False
+12:29:04 process_command study_intent=None
+12:29:04 CHECKPOINT play_music: t0='open' _local_intent='None'
+12:29:13 POST_WAKE result: 'open calculator'
+12:29:13 EXECUTING command: 'open calculator'
+12:29:13 _safe_process_command received: 'open calculator'
+12:29:24 POST_WAKE result: 'calculator'
+12:29:24 EXECUTING command: 'calculator'
+12:29:24 _safe_process_command received: 'calculator'
+12:29:31 POST_WAKE result: 'calculator'
+12:29:31 EXECUTING command: 'calculator'
+12:29:31 _safe_process_command received: 'calculator'
+12:29:56 POST_WAKE result: 'open calculator'
+12:29:56 EXECUTING command: 'open calculator'
+12:29:56 _safe_process_command received: 'open calculator'
+12:29:56 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:29:56 process_command t0='open calculator' follow_active=False
+12:29:56 process_command study_intent=None
+12:29:56 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+12:30:04 POST_WAKE result: 'close calculator'
+12:30:04 EXECUTING command: 'close calculator'
+12:30:04 _safe_process_command received: 'close calculator'
+12:30:04 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:30:04 process_command t0='close calculator' follow_active=False
+12:30:04 process_command study_intent=None
+12:34:48 POST_WAKE result: 'open steam'
+12:34:48 EXECUTING command: 'open steam'
+12:34:48 _safe_process_command received: 'open steam'
+12:35:01 POST_WAKE result: 'open steam'
+12:35:01 EXECUTING command: 'open steam'
+12:35:01 _safe_process_command received: 'open steam'
+12:35:07 POST_WAKE result: 'open steam'
+12:35:07 EXECUTING command: 'open steam'
+12:35:07 _safe_process_command received: 'open steam'
+12:35:07 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:35:07 process_command t0='open steam' follow_active=False
+12:35:07 process_command study_intent=None
+12:35:07 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+12:35:37 POST_WAKE result: 'go'
+12:35:37 EXECUTING command: 'go'
+12:35:37 _safe_process_command received: 'go'
+12:35:37 process_command ENTERED with text='go' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:35:37 process_command t0='go' follow_active=False
+12:35:37 process_command study_intent=None
+12:35:37 CHECKPOINT play_music: t0='go' _local_intent='None'
+12:35:44 POST_WAKE result: 'local up'
+12:35:44 EXECUTING command: 'local up'
+12:35:44 _safe_process_command received: 'local up'
+12:35:44 process_command ENTERED with text='local up' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:35:44 process_command t0='local up' follow_active=False
+12:35:44 process_command study_intent=None
+12:35:44 CHECKPOINT play_music: t0='local up' _local_intent='None'
+12:35:44 EXIT not_command_like: t0='local up'
+12:35:51 POST_WAKE result: 'calculator'
+12:35:51 EXECUTING command: 'calculator'
+12:35:51 _safe_process_command received: 'calculator'
+12:35:51 process_command ENTERED with text='calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:35:51 process_command t0='calculator' follow_active=False
+12:35:51 process_command study_intent=None
+12:35:51 CHECKPOINT play_music: t0='calculator' _local_intent='None'
+12:35:56 POST_WAKE result: 'close calculator'
+12:35:56 EXECUTING command: 'close calculator'
+12:35:56 _safe_process_command received: 'close calculator'
+12:35:56 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:35:56 process_command t0='close calculator' follow_active=False
+12:35:56 process_command study_intent=None
+12:36:18 POST_WAKE result: 'open cooker'
+12:36:18 EXECUTING command: 'open cooker'
+12:36:18 _safe_process_command received: 'open cooker'
+12:36:23 POST_WAKE result: 'open calculator'
+12:36:23 EXECUTING command: 'open calculator'
+12:36:23 _safe_process_command received: 'open calculator'
+12:36:23 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:36:23 process_command t0='open calculator' follow_active=False
+12:36:23 process_command study_intent=None
+12:36:23 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+12:36:27 POST_WAKE result: 'close calculator'
+12:36:27 EXECUTING command: 'close calculator'
+12:36:27 _safe_process_command received: 'close calculator'
+12:36:28 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:36:28 process_command t0='close calculator' follow_active=False
+12:36:28 process_command study_intent=None
+12:39:36 POST_WAKE result: 'open steam'
+12:39:36 EXECUTING command: 'open steam'
+12:39:36 _safe_process_command received: 'open steam'
+12:39:46 POST_WAKE result: 'open some'
+12:39:46 EXECUTING command: 'open some'
+12:39:46 _safe_process_command received: 'open some'
+12:39:55 POST_WAKE result: 'open calculator'
+12:39:55 EXECUTING command: 'open calculator'
+12:39:55 _safe_process_command received: 'open calculator'
+12:39:55 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:39:55 process_command t0='open calculator' follow_active=False
+12:39:55 process_command study_intent=None
+12:39:55 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+12:40:00 POST_WAKE result: 'close calculator'
+12:40:00 EXECUTING command: 'close calculator'
+12:40:00 _safe_process_command received: 'close calculator'
+12:40:00 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:40:00 process_command t0='close calculator' follow_active=False
+12:40:00 process_command study_intent=None
+12:40:13 POST_WAKE result: 'open calculator'
+12:40:13 EXECUTING command: 'open calculator'
+12:40:13 _safe_process_command received: 'open calculator'
+12:40:13 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:40:13 process_command t0='open calculator' follow_active=False
+12:40:13 process_command study_intent=None
+12:40:13 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+12:40:18 POST_WAKE result: 'close calculator'
+12:40:18 EXECUTING command: 'close calculator'
+12:40:18 _safe_process_command received: 'close calculator'
+12:40:18 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:40:18 process_command t0='close calculator' follow_active=False
+12:40:18 process_command study_intent=None
+12:40:36 POST_WAKE result: 'open calculator'
+12:40:36 EXECUTING command: 'open calculator'
+12:40:36 _safe_process_command received: 'open calculator'
+12:40:36 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:40:36 process_command t0='open calculator' follow_active=False
+12:40:36 process_command study_intent=None
+12:40:36 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+12:40:43 POST_WAKE result: 'close calculator'
+12:40:43 EXECUTING command: 'close calculator'
+12:40:43 _safe_process_command received: 'close calculator'
+12:40:43 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:40:43 process_command t0='close calculator' follow_active=False
+12:40:43 process_command study_intent=None
+12:45:11 POST_WAKE result: 'open calculator'
+12:45:11 EXECUTING command: 'open calculator'
+12:45:11 _safe_process_command received: 'open calculator'
+12:45:11 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:45:11 process_command t0='open calculator' follow_active=False
+12:45:11 process_command study_intent=None
+12:45:11 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+12:45:23 POST_WAKE result: 'close calculator'
+12:45:23 EXECUTING command: 'close calculator'
+12:45:23 _safe_process_command received: 'close calculator'
+12:45:23 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+12:45:23 process_command t0='close calculator' follow_active=False
+12:45:23 process_command study_intent=None
+21:28:08 POST_WAKE result: 'browser'
+21:28:08 EXECUTING command: 'browser'
+21:28:08 _safe_process_command received: 'browser'
+21:30:23 POST_WAKE result: 'open steam'
+21:30:23 EXECUTING command: 'open steam'
+21:30:23 _safe_process_command received: 'open steam'
+21:30:23 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:30:23 process_command t0='open steam' follow_active=False
+21:30:23 process_command study_intent=None
+21:30:23 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:31:04 POST_WAKE result: 'close steam'
+21:31:04 EXECUTING command: 'close steam'
+21:31:04 _safe_process_command received: 'close steam'
+21:31:04 process_command ENTERED with text='close steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:31:04 process_command t0='close steam' follow_active=False
+21:31:04 process_command study_intent=None
+21:31:16 POST_WAKE result: 'the calculator'
+21:31:16 EXECUTING command: 'the calculator'
+21:31:16 _safe_process_command received: 'the calculator'
+21:31:27 POST_WAKE result: 'off local'
+21:31:27 EXECUTING command: 'off local'
+21:31:27 _safe_process_command received: 'off local'
+21:31:27 process_command ENTERED with text='off local' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:31:27 process_command t0='off local' follow_active=False
+21:31:27 process_command study_intent=None
+21:31:27 CHECKPOINT play_music: t0='off local' _local_intent='None'
+21:31:27 EXIT not_command_like: t0='off local'
+21:31:38 POST_WAKE result: 'google it'
+21:31:38 EXECUTING command: 'google it'
+21:31:38 _safe_process_command received: 'google it'
+21:31:42 POST_WAKE result: 'eight'
+21:31:42 EXECUTING command: 'eight'
+21:31:42 _safe_process_command received: 'eight'
+21:31:48 POST_WAKE result: 'open calculator'
+21:31:48 EXECUTING command: 'open calculator'
+21:31:48 _safe_process_command received: 'open calculator'
+21:31:48 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:31:48 process_command t0='open calculator' follow_active=False
+21:31:48 process_command study_intent=None
+21:31:48 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:32:02 POST_WAKE result: 'close calculator'
+21:32:02 EXECUTING command: 'close calculator'
+21:32:02 _safe_process_command received: 'close calculator'
+21:32:02 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:32:02 process_command t0='close calculator' follow_active=False
+21:32:02 process_command study_intent=None
+21:32:10 POST_WAKE result: 'close calculator'
+21:32:10 EXECUTING command: 'close calculator'
+21:32:10 _safe_process_command received: 'close calculator'
+21:32:10 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:32:10 process_command t0='close calculator' follow_active=False
+21:32:10 process_command study_intent=None
+21:33:20 POST_WAKE result: 'open calculator'
+21:33:20 EXECUTING command: 'open calculator'
+21:33:20 _safe_process_command received: 'open calculator'
+21:33:20 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:33:20 process_command t0='open calculator' follow_active=False
+21:33:20 process_command study_intent=None
+21:33:20 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:33:27 POST_WAKE result: 'close calculator'
+21:33:27 EXECUTING command: 'close calculator'
+21:33:27 _safe_process_command received: 'close calculator'
+21:33:27 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:33:27 process_command t0='close calculator' follow_active=False
+21:33:27 process_command study_intent=None
+21:33:41 POST_WAKE result: 'open'
+21:33:41 EXECUTING command: 'open'
+21:33:41 _safe_process_command received: 'open'
+21:33:41 process_command ENTERED with text='open' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:33:41 process_command t0='open' follow_active=False
+21:33:41 process_command study_intent=None
+21:33:41 CHECKPOINT play_music: t0='open' _local_intent='None'
+21:34:02 POST_WAKE result: 'open calculator'
+21:34:02 EXECUTING command: 'open calculator'
+21:34:02 _safe_process_command received: 'open calculator'
+21:34:02 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:34:02 process_command t0='open calculator' follow_active=False
+21:34:02 process_command study_intent=None
+21:34:02 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:34:07 POST_WAKE result: 'close calculator'
+21:34:07 EXECUTING command: 'close calculator'
+21:34:07 _safe_process_command received: 'close calculator'
+21:34:07 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:34:07 process_command t0='close calculator' follow_active=False
+21:34:07 process_command study_intent=None
+21:34:40 POST_WAKE result: 'open'
+21:34:40 EXECUTING command: 'open'
+21:34:40 _safe_process_command received: 'open'
+21:34:40 process_command ENTERED with text='open' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:34:40 process_command t0='open' follow_active=False
+21:34:40 process_command study_intent=None
+21:34:40 CHECKPOINT play_music: t0='open' _local_intent='None'
+21:36:16 POST_WAKE result: 'calculator'
+21:36:16 EXECUTING command: 'calculator'
+21:36:16 _safe_process_command received: 'calculator'
+21:36:16 process_command ENTERED with text='calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:36:16 process_command t0='calculator' follow_active=False
+21:36:16 process_command study_intent=None
+21:36:16 CHECKPOINT play_music: t0='calculator' _local_intent='None'
+21:36:37 POST_WAKE result: 'open calculator'
+21:36:37 EXECUTING command: 'open calculator'
+21:36:37 _safe_process_command received: 'open calculator'
+21:36:37 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:36:37 process_command t0='open calculator' follow_active=False
+21:36:37 process_command study_intent=None
+21:36:37 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:36:44 POST_WAKE result: 'close calculator'
+21:36:44 EXECUTING command: 'close calculator'
+21:36:44 _safe_process_command received: 'close calculator'
+21:36:44 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:36:44 process_command t0='close calculator' follow_active=False
+21:36:44 process_command study_intent=None
+21:37:16 POST_WAKE result: 'open calculator'
+21:37:16 EXECUTING command: 'open calculator'
+21:37:16 _safe_process_command received: 'open calculator'
+21:37:38 POST_WAKE result: 'open calculator'
+21:37:38 EXECUTING command: 'open calculator'
+21:37:38 _safe_process_command received: 'open calculator'
+21:37:38 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:37:38 process_command t0='open calculator' follow_active=False
+21:37:38 process_command study_intent=None
+21:37:38 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:39:18 POST_WAKE result: 'open steam'
+21:39:18 EXECUTING command: 'open steam'
+21:39:18 _safe_process_command received: 'open steam'
+21:39:27 POST_WAKE result: 'open calculator'
+21:39:27 EXECUTING command: 'open calculator'
+21:39:27 _safe_process_command received: 'open calculator'
+21:39:40 POST_WAKE result: 'volume up'
+21:39:40 EXECUTING command: 'volume up'
+21:39:40 _safe_process_command received: 'volume up'
+21:39:40 process_command ENTERED with text='volume up' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:39:40 process_command t0='volume up' follow_active=False
+21:39:40 process_command study_intent=None
+21:39:50 _safe_process_command received: 'one un'
+21:39:50 process_command ENTERED with text='one un' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:39:50 process_command t0='one un' follow_active=False
+21:39:50 process_command study_intent=None
+21:39:50 CHECKPOINT play_music: t0='one un' _local_intent='None'
+21:39:50 EXIT not_command_like: t0='one un'
+21:40:00 POST_WAKE result: 'revoke access'
+21:40:00 EXECUTING command: 'revoke access'
+21:40:00 _safe_process_command received: 'revoke access'
+21:40:15 POST_WAKE result: 'revoke access'
+21:40:15 EXECUTING command: 'revoke access'
+21:40:15 _safe_process_command received: 'revoke access'
+21:40:33 POST_WAKE result: 'open calculator'
+21:40:33 EXECUTING command: 'open calculator'
+21:40:33 _safe_process_command received: 'open calculator'
+21:40:33 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:40:33 process_command t0='open calculator' follow_active=False
+21:40:33 process_command study_intent=None
+21:40:33 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:40:48 POST_WAKE result: 'open calculator'
+21:40:48 EXECUTING command: 'open calculator'
+21:40:48 _safe_process_command received: 'open calculator'
+21:41:06 POST_WAKE result: 'open calculator'
+21:41:06 EXECUTING command: 'open calculator'
+21:41:06 _safe_process_command received: 'open calculator'
+21:41:06 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:41:06 process_command t0='open calculator' follow_active=False
+21:41:06 process_command study_intent=None
+21:41:06 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:41:30 POST_WAKE result: 'i'm not go back'
+21:41:30 EXECUTING command: 'i'm not go back'
+21:41:30 _safe_process_command received: 'i'm not go back'
+21:41:30 process_command ENTERED with text='i'm not go back' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:41:30 process_command t0='i'm not go back' follow_active=False
+21:41:30 process_command study_intent=None
+21:41:30 CHECKPOINT play_music: t0='i'm not go back' _local_intent='None'
+21:41:37 POST_WAKE result: 'open steam'
+21:41:37 EXECUTING command: 'open steam'
+21:41:37 _safe_process_command received: 'open steam'
+21:41:37 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:41:37 process_command t0='open steam' follow_active=False
+21:41:37 process_command study_intent=None
+21:41:37 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:42:04 POST_WAKE result: 'open calculator'
+21:42:04 EXECUTING command: 'open calculator'
+21:42:04 _safe_process_command received: 'open calculator'
+21:42:04 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:42:04 process_command t0='open calculator' follow_active=False
+21:42:04 process_command study_intent=None
+21:42:04 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:42:29 POST_WAKE result: 'open calculator'
+21:42:29 EXECUTING command: 'open calculator'
+21:42:29 _safe_process_command received: 'open calculator'
+21:42:29 process_command ENTERED with text='open calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:42:29 process_command t0='open calculator' follow_active=False
+21:42:29 process_command study_intent=None
+21:42:29 CHECKPOINT play_music: t0='open calculator' _local_intent='open app'
+21:42:41 POST_WAKE result: 'open calculator'
+21:42:41 EXECUTING command: 'open calculator'
+21:42:41 _safe_process_command received: 'open calculator'
+21:44:00 POST_WAKE result: 'personal confirm'
+21:44:00 EXECUTING command: 'personal confirm'
+21:44:00 _safe_process_command received: 'personal confirm'
+21:44:10 POST_WAKE result: 'open steam'
+21:44:10 EXECUTING command: 'open steam'
+21:44:10 _safe_process_command received: 'open steam'
+21:44:10 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:44:10 process_command t0='open steam' follow_active=False
+21:44:10 process_command study_intent=None
+21:44:10 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:44:24 POST_WAKE result: 'open steam'
+21:44:24 EXECUTING command: 'open steam'
+21:44:24 _safe_process_command received: 'open steam'
+21:44:24 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:44:24 process_command t0='open steam' follow_active=False
+21:44:24 process_command study_intent=None
+21:44:24 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:50:33 POST_WAKE result: 'None'
+21:50:39 POST_WAKE result: 'open steam'
+21:50:39 EXECUTING command: 'open steam'
+21:50:39 _safe_process_command received: 'open steam'
+21:50:39 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:50:39 process_command t0='open steam' follow_active=False
+21:50:39 process_command study_intent=None
+21:50:39 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:51:08 POST_WAKE result: 'the ones'
+21:51:08 EXECUTING command: 'the ones'
+21:51:08 _safe_process_command received: 'the ones'
+21:51:30 POST_WAKE result: 'open sir'
+21:51:30 EXECUTING command: 'open sir'
+21:51:30 _safe_process_command received: 'open sir'
+21:51:30 process_command ENTERED with text='open sir' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:51:30 process_command t0='open sir' follow_active=False
+21:51:30 process_command study_intent=None
+21:51:30 CHECKPOINT play_music: t0='open sir' _local_intent='None'
+21:51:38 POST_WAKE result: 'open steam'
+21:51:38 EXECUTING command: 'open steam'
+21:51:38 _safe_process_command received: 'open steam'
+21:51:58 POST_WAKE result: 'open steam'
+21:51:58 EXECUTING command: 'open steam'
+21:51:58 _safe_process_command received: 'open steam'
+21:51:58 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:51:58 process_command t0='open steam' follow_active=False
+21:51:58 process_command study_intent=None
+21:51:58 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:52:07 POST_WAKE result: 'open steam'
+21:52:07 EXECUTING command: 'open steam'
+21:52:07 _safe_process_command received: 'open steam'
+21:52:07 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:52:07 process_command t0='open steam' follow_active=False
+21:52:07 process_command study_intent=None
+21:52:07 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:52:20 POST_WAKE result: 'open steam'
+21:52:20 EXECUTING command: 'open steam'
+21:52:20 _safe_process_command received: 'open steam'
+21:52:20 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:52:20 process_command t0='open steam' follow_active=False
+21:52:20 process_command study_intent=None
+21:52:20 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:52:33 POST_WAKE result: 'open steam'
+21:52:33 EXECUTING command: 'open steam'
+21:52:33 _safe_process_command received: 'open steam'
+21:52:33 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+21:52:33 process_command t0='open steam' follow_active=False
+21:52:33 process_command study_intent=None
+21:52:33 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+21:54:17 POST_WAKE result: 'open steam'
+21:54:17 EXECUTING command: 'open steam'
+21:54:17 _safe_process_command received: 'open steam'
+21:54:56 POST_WAKE result: 'open you'
+21:54:56 EXECUTING command: 'open you'
+21:54:56 _safe_process_command received: 'open you'
+21:55:04 POST_WAKE result: 'open steam'
+21:55:04 EXECUTING command: 'open steam'
+21:55:04 _safe_process_command received: 'open steam'
+21:59:15 POST_WAKE result: 'None'
+21:59:57 POST_WAKE result: 'one'
+21:59:57 EXECUTING command: 'one'
+21:59:57 _safe_process_command received: 'one'
+22:02:18 POST_WAKE result: 'None'
+22:02:49 POST_WAKE result: 'exit opera mode just'
+22:02:49 EXECUTING command: 'exit opera mode just'
+22:02:49 _safe_process_command received: 'exit opera mode just'
+22:02:54 POST_WAKE result: 'all that'
+22:02:54 EXECUTING command: 'all that'
+22:02:54 _safe_process_command received: 'all that'
+22:03:07 POST_WAKE result: 'the first continent'
+22:03:07 EXECUTING command: 'the first continent'
+22:03:07 _safe_process_command received: 'the first continent'
+22:03:24 POST_WAKE result: 'when'
+22:03:24 EXECUTING command: 'when'
+22:03:24 _safe_process_command received: 'when'
+22:03:30 POST_WAKE result: 'the know'
+22:03:30 EXECUTING command: 'the know'
+22:03:30 _safe_process_command received: 'the know'
+22:06:51 POST_WAKE result: '__SKIP_WAKE_COMMAND__'
+22:23:02 POST_WAKE result: 'shutdown'
+22:23:02 EXECUTING command: 'shutdown'
+22:23:02 _safe_process_command received: 'shutdown'
+22:24:07 POST_WAKE result: 'None'
+22:28:26 POST_WAKE result: 'None'
+22:39:11 POST_WAKE result: 'open steam'
+22:39:11 EXECUTING command: 'open steam'
+22:39:11 _safe_process_command received: 'open steam'
+22:39:26 POST_WAKE result: 'open'
+22:39:26 EXECUTING command: 'open'
+22:39:26 _safe_process_command received: 'open'
+22:43:13 POST_WAKE result: 'open'
+22:43:13 EXECUTING command: 'open'
+22:43:13 _safe_process_command received: 'open'
+22:43:34 POST_WAKE result: 'open steam'
+22:43:34 EXECUTING command: 'open steam'
+22:43:34 _safe_process_command received: 'open steam'
+22:45:19 POST_WAKE result: 'open'
+22:45:19 EXECUTING command: 'open'
+22:45:19 _safe_process_command received: 'open'
+22:46:02 POST_WAKE result: 'steam'
+22:46:02 EXECUTING command: 'steam'
+22:46:02 _safe_process_command received: 'steam'
+22:46:14 POST_WAKE result: 'steam'
+22:46:14 EXECUTING command: 'steam'
+22:46:14 _safe_process_command received: 'steam'
+22:46:33 POST_WAKE result: 'open steam'
+22:46:33 EXECUTING command: 'open steam'
+22:46:33 _safe_process_command received: 'open steam'
+22:47:15 POST_WAKE result: 'open steam'
+22:47:15 EXECUTING command: 'open steam'
+22:47:15 _safe_process_command received: 'open steam'
+22:47:32 POST_WAKE result: 'open steam'
+22:47:32 EXECUTING command: 'open steam'
+22:47:32 _safe_process_command received: 'open steam'
+22:48:44 POST_WAKE result: 'google grant access'
+22:48:44 EXECUTING command: 'google grant access'
+22:48:44 _safe_process_command received: 'google grant access'
+22:48:54 POST_WAKE result: 'volume listen to'
+22:48:54 EXECUTING command: 'volume listen to'
+22:48:54 _safe_process_command received: 'volume listen to'
+22:50:18 POST_WAKE result: 'calculator'
+22:50:18 EXECUTING command: 'calculator'
+22:50:18 _safe_process_command received: 'calculator'
+22:50:18 process_command ENTERED with text='calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+22:50:18 process_command t0='calculator' follow_active=False
+22:50:18 process_command study_intent=None
+22:50:18 CHECKPOINT play_music: t0='calculator' _local_intent='None'
+22:51:43 POST_WAKE result: 'calculator'
+22:51:43 EXECUTING command: 'calculator'
+22:51:43 _safe_process_command received: 'calculator'
+22:51:43 process_command ENTERED with text='calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+22:51:43 process_command t0='calculator' follow_active=False
+22:51:43 process_command study_intent=None
+22:51:43 CHECKPOINT play_music: t0='calculator' _local_intent='None'
+22:51:50 POST_WAKE result: 'close third'
+22:51:50 EXECUTING command: 'close third'
+22:51:50 _safe_process_command received: 'close third'
+22:51:50 process_command ENTERED with text='close third' intent_map_has_music=True intent_map_music=play_music map_size=404
+22:51:50 process_command t0='close third' follow_active=False
+22:51:50 process_command study_intent=None
+22:51:55 POST_WAKE result: 'close calculator'
+22:51:55 EXECUTING command: 'close calculator'
+22:51:55 _safe_process_command received: 'close calculator'
+22:51:55 process_command ENTERED with text='close calculator' intent_map_has_music=True intent_map_music=play_music map_size=404
+22:51:55 process_command t0='close calculator' follow_active=False
+22:51:55 process_command study_intent=None
+22:54:18 POST_WAKE result: 'None'
+22:58:05 POST_WAKE result: 'open steam'
+22:58:05 EXECUTING command: 'open steam'
+22:58:05 _safe_process_command received: 'open steam'
+22:58:05 process_command ENTERED with text='open steam' intent_map_has_music=True intent_map_music=play_music map_size=404
+22:58:05 process_command t0='open steam' follow_active=False
+22:58:05 process_command study_intent=None
+22:58:05 CHECKPOINT play_music: t0='open steam' _local_intent='open app'
+23:04:06 POST_WAKE result: 'None'
+23:37:26 POST_WAKE result: 'None'
+23:37:56 POST_WAKE result: 'open some'
+23:37:57 EXECUTING command: 'open some'
+23:37:57 _safe_process_command received: 'open some'
+23:38:08 POST_WAKE result: 'open steam'
+23:38:08 EXECUTING command: 'open steam'
+23:38:08 _safe_process_command received: 'open steam'
+23:38:27 POST_WAKE result: 'open steam'
+23:38:27 EXECUTING command: 'open steam'
+23:38:27 _safe_process_command received: 'open steam'
+23:41:46 POST_WAKE result: 'None'
+23:50:01 POST_WAKE result: 'None'
+23:53:41 POST_WAKE result: 'None'
+23:57:38 POST_WAKE result: 'None'

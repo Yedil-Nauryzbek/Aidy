@@ -33,6 +33,12 @@ namespace WpfApp1.Services
                     var startupNode = root["startup"] as JsonObject;
                     var aidiNode = root["aidi"] as JsonObject;
 
+                    var customModeNode = root["custom_mode"] as JsonObject;
+                    var customModeSlots = ReadCustomModeSlots(customModeNode);
+                    var voiceSensNode = root["voice_sensitivity"] as JsonObject;
+                    var mouseCtrlNode = root["mouse_control"] as JsonObject;
+                    var preferredAppsNode = root["preferred_apps"] as JsonObject;
+
                     var config = new AppConfig
                     {
                         PushToTalkEnabled = ReadBool(root, "push_to_talk_enabled"),
@@ -53,6 +59,29 @@ namespace WpfApp1.Services
                         {
                             FilePath = NormalizeAbsolutePath(ReadString(aidiNode, "file_path")),
                             Volume = NormalizeVolume(ReadInt(aidiNode, "volume", AppConfig.DefaultAidiVolume)),
+                        },
+                        CustomMode = new CustomModeConfig
+                        {
+                            Enabled = ReadBool(customModeNode, "enabled"),
+                            Slots = customModeSlots,
+                        },
+                        VoiceSensitivity = new VoiceSensitivityConfig
+                        {
+                            VadThreshold = Math.Clamp(ReadInt(voiceSensNode, "vad_threshold", VoiceSensitivityConfig.DefaultVadThreshold), 50, 500),
+                            SilenceMs = Math.Clamp(ReadInt(voiceSensNode, "silence_ms", VoiceSensitivityConfig.DefaultSilenceMs), 200, 2000),
+                            MinSpeechMs = Math.Clamp(ReadInt(voiceSensNode, "min_speech_ms", VoiceSensitivityConfig.DefaultMinSpeechMs), 50, 500),
+                        },
+                        MouseControl = new MouseControlConfig
+                        {
+                            MovePx = Math.Clamp(ReadInt(mouseCtrlNode, "move_px", MouseControlConfig.DefaultMovePx), 50, 2000),
+                            ScrollClicks = Math.Clamp(ReadInt(mouseCtrlNode, "scroll_clicks", MouseControlConfig.DefaultScrollClicks), 10, 1000),
+                            ScrollStep = Math.Clamp(ReadInt(mouseCtrlNode, "scroll_step", MouseControlConfig.DefaultScrollStep), 1, 100),
+                            ScrollDelay = Math.Clamp(ReadDouble(mouseCtrlNode, "scroll_delay", MouseControlConfig.DefaultScrollDelay), 0.0, 0.1),
+                        },
+                        PreferredApps = new PreferredAppsConfig
+                        {
+                            Browser = ReadString(preferredAppsNode, "browser"),
+                            MusicApp = ReadString(preferredAppsNode, "music_app"),
                         },
                     };
 
@@ -92,6 +121,25 @@ namespace WpfApp1.Services
                 startup["greeting_enabled"] = config.Startup?.GreetingEnabled ?? false;
                 aidi["file_path"] = aidiFilePath;
                 aidi["volume"] = aidiVolume;
+
+                var customMode = EnsureObject(root, "custom_mode");
+                customMode["enabled"] = config.CustomMode?.Enabled ?? false;
+                WriteCustomModeSlots(customMode, config.CustomMode?.Slots);
+
+                var voiceSens = EnsureObject(root, "voice_sensitivity");
+                voiceSens["vad_threshold"] = config.VoiceSensitivity?.VadThreshold ?? VoiceSensitivityConfig.DefaultVadThreshold;
+                voiceSens["silence_ms"] = config.VoiceSensitivity?.SilenceMs ?? VoiceSensitivityConfig.DefaultSilenceMs;
+                voiceSens["min_speech_ms"] = config.VoiceSensitivity?.MinSpeechMs ?? VoiceSensitivityConfig.DefaultMinSpeechMs;
+
+                var mouseCtrl = EnsureObject(root, "mouse_control");
+                mouseCtrl["move_px"] = config.MouseControl?.MovePx ?? MouseControlConfig.DefaultMovePx;
+                mouseCtrl["scroll_clicks"] = config.MouseControl?.ScrollClicks ?? MouseControlConfig.DefaultScrollClicks;
+                mouseCtrl["scroll_step"] = config.MouseControl?.ScrollStep ?? MouseControlConfig.DefaultScrollStep;
+                mouseCtrl["scroll_delay"] = config.MouseControl?.ScrollDelay ?? MouseControlConfig.DefaultScrollDelay;
+
+                var preferredApps = EnsureObject(root, "preferred_apps");
+                preferredApps["browser"] = config.PreferredApps?.Browser ?? string.Empty;
+                preferredApps["music_app"] = config.PreferredApps?.MusicApp ?? string.Empty;
 
                 var dir = Path.GetDirectoryName(_configPath);
                 if (!string.IsNullOrWhiteSpace(dir))
@@ -182,6 +230,73 @@ namespace WpfApp1.Services
             {
                 return fallback;
             }
+        }
+
+        private static double ReadDouble(JsonObject? node, string propertyName, double fallback)
+        {
+            if (node == null)
+            {
+                return fallback;
+            }
+
+            try
+            {
+                return node[propertyName]?.GetValue<double>() ?? fallback;
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        private static CustomModeSlot[] ReadCustomModeSlots(JsonObject? node)
+        {
+            var defaults = new[] { new CustomModeSlot(), new CustomModeSlot(), new CustomModeSlot() };
+            if (node == null) return defaults;
+
+            try
+            {
+                if (node["slots"] is not JsonArray arr) return defaults;
+
+                var result = new CustomModeSlot[arr.Count];
+                for (int i = 0; i < arr.Count; i++)
+                {
+                    if (arr[i] is JsonObject slotObj)
+                    {
+                        result[i] = new CustomModeSlot
+                        {
+                            ActionType  = ReadString(slotObj, "action_type"),
+                            Target      = ReadString(slotObj, "target"),
+                            DisplayName = ReadString(slotObj, "display_name"),
+                        };
+                    }
+                    else
+                    {
+                        result[i] = new CustomModeSlot();
+                    }
+                }
+                return result;
+            }
+            catch
+            {
+                return defaults;
+            }
+        }
+
+        private static void WriteCustomModeSlots(JsonObject customMode, CustomModeSlot[]? slots)
+        {
+            var arr = new JsonArray();
+            var src = slots ?? Array.Empty<CustomModeSlot>();
+            foreach (var s in src)
+            {
+                arr.Add(new JsonObject
+                {
+                    ["action_type"]  = s?.ActionType  ?? string.Empty,
+                    ["target"]       = s?.Target      ?? string.Empty,
+                    ["display_name"] = s?.DisplayName ?? string.Empty,
+                });
+            }
+            customMode["slots"] = arr;
         }
 
         private static int NormalizeVolume(int value)

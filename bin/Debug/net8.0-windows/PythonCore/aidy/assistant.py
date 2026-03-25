@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import os
 import json
 import time
@@ -10,8 +10,11 @@ import threading
 import io
 import sys
 import queue
+import wave
+import glob as _glob_mod
 from collections import deque
 from ctypes import wintypes
+
 
 try:
     import vosk
@@ -86,6 +89,8 @@ from .config import (
     UNMUTE_PHRASES,
     UNDO_LAST_PHRASES,
     UNDO_ALL_PHRASES,
+    LOCAL_MODE_ON_PHRASES,
+    LOCAL_MODE_OFF_PHRASES,
     WINDOW_SWITCH_GRAMMAR,
     WINDOW_SWITCH_LEFT,
     WINDOW_SWITCH_RIGHT,
@@ -99,8 +104,9 @@ from .config import (
     FOLLOW_MODE_ENABLED,
     FOLLOW_MODE_TTL_SECONDS,
     FOLLOW_MODE_REPEAT_LAST_STEPS,
+    MOUSE_COMMAND_PHRASES,
 )
-from .logui import ui_state, ui_command, ui_timer, ui_study_mode, debug, info, warn, error, UI_MODE, LOG_LEVEL
+from .logui import ui_state, ui_command, ui_timer, ui_study_mode, ui_local_mode, debug, info, warn, error, UI_MODE, LOG_LEVEL
 from .voice import Voice
 from .apps import (
     load_apps_config,
@@ -122,6 +128,7 @@ from .system import (
     volume_steps,
     brightness_steps,
     get_active_window_info,
+    execute_mouse_command,
 )
 from .intent_api import start_local_intent_api, IntentAPI
 from .context import ContextManager, should_merge_context
@@ -266,10 +273,10 @@ class Aidy:
     WAKE_ACK_GUARD_MS = 12
     WAKE_GREETING_COOLDOWN_S = 0.12
     WAKE_GREETING_MIN_RMS = 1
-    COMMAND_SILENCE_STOP_MS = 360
-    COMMAND_SILENCE_STOP_MS_LEGACY = 420
-    FOLLOWUP_SILENCE_STOP_MS = 340
-    CONFIRM_SILENCE_STOP_MS = 320
+    COMMAND_SILENCE_STOP_MS = 200
+    COMMAND_SILENCE_STOP_MS_LEGACY = 250
+    FOLLOWUP_SILENCE_STOP_MS = 180
+    CONFIRM_SILENCE_STOP_MS = 180
     PTT_PAUSED_TOKEN = "__PTT_PAUSED__"
     _SHORT_PATH_ENABLED = True
 
@@ -1589,13 +1596,19 @@ class Aidy:
             self._wake_log("ack skipped: voice muted")
             ui_state("IDLE")
             return
+
+        # Start embedding extraction in background BEFORE playing audio,
+        # so ML inference overlaps with the wake acknowledgment playback.
+        self._start_embedding_precompute()
+
         ui_state("SPEAKING")
         ack_t0 = time.perf_counter()
         self._wake_log("ack playback")
         played = False
+        # Cap wake ack playback to ~500ms so the SPEAKING state is brief.
+        _WAKE_ACK_MAX_MS = 550
         try:
-            # Fast wake response with full clip to avoid truncated speech.
-            played = bool(self.voice.play_key("wake_fast"))
+            played = bool(self.voice.play_key("wake_fast", max_ms=_WAKE_ACK_MAX_MS))
             if played:
                 self._wake_log("ack source=clip key='wake_fast'")
         except Exception as e:
@@ -1604,7 +1617,7 @@ class Aidy:
         if not played:
             try:
                 self._wake_log("ack fallback source=clip key='wake'")
-                played = bool(self.voice.play_key("wake"))
+                played = bool(self.voice.play_key("wake", max_ms=_WAKE_ACK_MAX_MS))
                 if played:
                     self._wake_log("ack source=clip key='wake'")
             except Exception as e:
@@ -1613,7 +1626,7 @@ class Aidy:
         if not played:
             try:
                 self._wake_log("ack final fallback source=tts")
-                played = bool(self.voice.tts_blocking("Yes."))
+                played = bool(self.voice.tts_blocking("Yes.", timeout_sec=0.55))
                 if played:
                     self._wake_log("ack source=tts text='Yes.'")
             except Exception as e:
@@ -1866,8 +1879,11 @@ class Aidy:
             | set(LESS_ACTION_PHRASES)
             | set(TIMER_START_PHRASES)
             | set(TIMER_CANCEL_PHRASES)
+            | set(LOCAL_MODE_ON_PHRASES)
+            | set(LOCAL_MODE_OFF_PHRASES)
             | set(STUDY_MODE_STOP_PHRASES)
             | set(STUDY_MODE_STATUS_PHRASES)
+            | set(MOUSE_COMMAND_PHRASES)
         )
 
         if self.legacy_accuracy_mode:
@@ -1987,6 +2003,9 @@ class Aidy:
         self._last_audio_buffer: bytes = b""
         self.voice_id_enabled = False
         self._pending_admin_enrollment = False
+        self._enrollment_cancel_requested = False
+        self._enrollment_in_progress = False
+        self._enrollment_force_overwrite = False
 
     def start_stream(self):
         if self.stream is not None:
@@ -2095,6 +2114,8 @@ class Aidy:
         self._apply_push_to_talk_settings(cfg_enabled, cfg_key, source="config")
 
     def _refresh_runtime_config_if_needed(self):
+        if self._enrollment_in_progress:
+            return
         now = time.time()
         if (now - self._runtime_cfg_last_check_at) < 0.35:
             return
@@ -2163,6 +2184,16 @@ class Aidy:
             return
         if low == "enroll_admin":
             self._pending_admin_enrollment = True
+            self._enrollment_force_overwrite = False # Обычный запуск (спросит пароль)
+            return
+        if low == "enroll_admin_force":
+            info("[ENROLL] Received enroll_admin_force command")
+            self._pending_admin_enrollment = True
+            self._enrollment_force_overwrite = True  # ПАРОЛЬ ВВЕДЕН! (Сразу пишет фразы)
+            return
+        if low == "cancel_enrollment":
+            self._pending_admin_enrollment = False
+            self._enrollment_cancel_requested = True
             return
 
     def _drain_control_commands(self, max_items: int = 24):
@@ -2178,6 +2209,8 @@ class Aidy:
                 warn(f"Control command failed '{cmd}': {e}")
 
     def _is_listening_allowed(self) -> bool:
+        if self._enrollment_in_progress:
+            return True
         return (not self.push_to_talk_enabled) or self._ptt_listening_flag
 
     def start_listening(self):
@@ -2312,19 +2345,24 @@ class Aidy:
         _wake_audio_deque: deque[bytes] = deque(maxlen=240)
 
         # --- НАСТРОЙКА ШУМОПОДАВЛЕНИЯ ---
-        # Порог энергии звука. Всё, что ниже этого значения — считается тишиной 
-        # или белым шумом кулеров/микрофона. Если ложные срабатывания 
+        # Порог энергии звука. Всё, что ниже этого значения — считается тишиной
+        # или белым шумом кулеров/микрофона. Если ложные срабатывания
         # продолжатся, увеличьте это значение (например, до 300 или 500).
         SPEECH_MIN_RMS = 0
 
         while True:
             self._refresh_runtime_config_if_needed()
             self._drain_control_commands()
-            
+
+            # Interrupt wake loop if enrollment was requested
+            if getattr(self, "_pending_admin_enrollment", False):
+                self._wake_log("interrupt: pending admin enrollment")
+                return "__CONTROL_BREAK__"
+
             if not self._is_listening_allowed():
                 ui_state("IDLE")
                 return self.PTT_PAUSED_TOKEN
-                
+
             with self._study_lock:
                 if self.study_restore_prompt_pending:
                     return "__STUDY_RESTORE_PROMPT__"
@@ -2471,16 +2509,23 @@ class Aidy:
 
     def listen_command_vosk(
         self,
-        max_seconds=6,
-        min_listen_ms=2000,
+        max_seconds=5,
+        min_listen_ms=600,
         ui_state_label="LISTENING",
         use_grammar=True,
         speak_on_empty=True,
         grammar_phrases: list[str] | None = None,
+        vad_threshold: int | None = None,
+        silence_stop_override_ms: int | None = None,
+        force_listen: bool = False,
     ):
         self._sync_state_before_listen(ui_state_label)
         info(f"Command: listening... grammar={'on' if use_grammar else 'off'}")
-        if ui_state_label == "CONFIRM":
+
+        # Silence stop configuration per state
+        if silence_stop_override_ms is not None:
+            silence_stop_ms = silence_stop_override_ms
+        elif ui_state_label == "CONFIRM":
             silence_stop_ms = min(VAD_SILENCE_MS, int(self.CONFIRM_SILENCE_STOP_MS))
         elif ui_state_label == "COMMAND_LISTENING":
             silence_cap = (
@@ -2493,9 +2538,11 @@ class Aidy:
             silence_stop_ms = min(VAD_SILENCE_MS, int(self.FOLLOWUP_SILENCE_STOP_MS))
         else:
             silence_stop_ms = min(VAD_SILENCE_MS, int(self.COMMAND_SILENCE_STOP_MS))
+
+        effective_vad = vad_threshold if vad_threshold is not None else VAD_START_THRESHOLD
         self._cmd_log(
             f"start state={ui_state_label} grammar={'on' if use_grammar else 'off'} "
-            f"max_s={max_seconds} min_listen_ms={min_listen_ms} vad={VAD_START_THRESHOLD} "
+            f"max_s={max_seconds} min_listen_ms={min_listen_ms} vad={effective_vad} "
             f"silence_stop_ms={silence_stop_ms}"
         )
 
@@ -2509,9 +2556,9 @@ class Aidy:
         silence_ms = 0
         voiced_ms = 0
         last_rms = 0
+        vad_active = False  # tracks real-time voice activity for UI emblem
         start_time = time.time()
         if self._deafen_until > start_time:
-            # Do not consume user listen timeout while post-TTS deafen is active.
             start_time += (self._deafen_until - start_time)
         best_final = ""
         _vbuf: list[bytes] = []  # voiced audio accumulator for speaker verification
@@ -2519,10 +2566,21 @@ class Aidy:
         while time.time() - start_time < max_seconds:
             self._refresh_runtime_config_if_needed()
             self._drain_control_commands()
-            if not self._is_listening_allowed():
+
+            # Interrupt if enrollment was requested
+            if getattr(self, "_pending_admin_enrollment", False):
+                if vad_active:
+                    print("VOICE_ACTIVITY:off", flush=True)
+                return None
+
+            # Push-to-talk check (skip during enrollment)
+            if not force_listen and not self._is_listening_allowed():
                 ui_state("IDLE")
                 self._cmd_log("listen interrupted by ptt release")
+                if vad_active:
+                    print("VOICE_ACTIVITY:off", flush=True)
                 return None
+
             if self.stream is None:
                 data = b'\x00' * (CHUNK_SAMPLES * 2)
             else:
@@ -2536,10 +2594,20 @@ class Aidy:
             rms = audioop.rms(data, 2)
             last_rms = rms
 
+            # Real-time voice activity for UI emblem
+            if rms >= effective_vad:
+                if not vad_active:
+                    vad_active = True
+                    print("VOICE_ACTIVITY:on", flush=True)
+            else:
+                if vad_active:
+                    vad_active = False
+                    print("VOICE_ACTIVITY:off", flush=True)
+
             elapsed_ms = int((time.time() - start_time) * 1000)
 
             if not started:
-                if rms >= VAD_START_THRESHOLD:
+                if rms >= effective_vad:
                     started = True
                     silence_ms = 0
                     voiced_ms = frame_ms
@@ -2548,7 +2616,7 @@ class Aidy:
                     if elapsed_ms < min_listen_ms:
                         continue
             else:
-                if rms < VAD_START_THRESHOLD:
+                if rms < effective_vad:
                     silence_ms += frame_ms
                 else:
                     silence_ms = 0
@@ -2576,7 +2644,11 @@ class Aidy:
                 silence_ms = 0
                 voiced_ms = 0
 
-        # Store voiced audio for speaker verification by _safe_process_command
+        # Ensure voice activity indicator is turned off after loop exits
+        if vad_active:
+            print("VOICE_ACTIVITY:off", flush=True)
+
+        # Store voiced audio for speaker verification
         if _vbuf:
             self._last_audio_buffer = b"".join(_vbuf)
 
@@ -2605,8 +2677,8 @@ class Aidy:
 
     def listen_command_smart(
         self,
-        max_seconds=6,
-        min_listen_ms=2000,
+        max_seconds=5,
+        min_listen_ms=600,
         ui_state_label="LISTENING",
     ):
         text = self.listen_command_vosk(
@@ -2632,8 +2704,8 @@ class Aidy:
         non_action_hits = 0
         for attempt in range(max(1, int(max_attempts))):
             cmd_text = self.listen_command_vosk(
-                max_seconds=(4 if attempt == 0 else 3),
-                min_listen_ms=(420 if attempt == 0 else 320),
+                max_seconds=(3 if attempt == 0 else 2),
+                min_listen_ms=(300 if attempt == 0 else 250),
                 ui_state_label="COMMAND_LISTENING",
                 use_grammar=True,
                 speak_on_empty=False,
@@ -2641,8 +2713,8 @@ class Aidy:
             if not cmd_text:
                 self._cmd_log("post-wake grammar empty -> retry free-form")
                 cmd_text = self.listen_command_vosk(
-                    max_seconds=(3 if attempt == 0 else 2),
-                    min_listen_ms=(320 if attempt == 0 else 260),
+                    max_seconds=(2.5 if attempt == 0 else 1.5),
+                    min_listen_ms=(250 if attempt == 0 else 200),
                     ui_state_label="COMMAND_LISTENING",
                     use_grammar=False,
                     speak_on_empty=False,
@@ -3114,6 +3186,26 @@ class Aidy:
             "shut done": "shutdown",
             "shut down": "shutdown",
             "shut-down": "shutdown",
+            "mas up": "mouse up",
+            "mouse app": "mouse up",
+            "most up": "mouse up",
+            "mas down": "mouse down",
+            "most down": "mouse down",
+            "mas left": "mouse left",
+            "most left": "mouse left",
+            "mas right": "mouse right",
+            "most right": "mouse right",
+            "school up": "scroll up",
+            "scrawl up": "scroll up",
+            "school down": "scroll down",
+            "scrawl down": "scroll down",
+            "lick": "click",
+            "quick": "click",
+            "clic": "click",
+            "double clic": "double click",
+            "double quick": "double click",
+            "write click": "right click",
+            "right clic": "right click",
         }
 
         direct = normalize_map.get(t)
@@ -3223,6 +3315,8 @@ class Aidy:
         if t in CLOSE_ACTIVE_PHRASES:
             return True
         if t in TIMER_START_PHRASES or t in TIMER_CANCEL_PHRASES:
+            return True
+        if t in LOCAL_MODE_ON_PHRASES or t in LOCAL_MODE_OFF_PHRASES:
             return True
         if t in STUDY_MODE_START_PHRASES or t in STUDY_MODE_START_ALIASES or t in STUDY_MODE_STOP_PHRASES or t in STUDY_MODE_STATUS_PHRASES:
             return True
@@ -4166,6 +4260,26 @@ class Aidy:
             self._record_action("mute", {})
             return True
 
+        if t0 in LOCAL_MODE_ON_PHRASES:
+            ui_local_mode(True)
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("local_mode_on", "Local mode enabled.")
+            self._deafen_after_speak()
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
+        if t0 in LOCAL_MODE_OFF_PHRASES:
+            ui_local_mode(False)
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("local_mode_off", "Local mode disabled.")
+            self._deafen_after_speak()
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
         if t0 in UNDO_ALL_PHRASES:
             return self._undo_chain()
 
@@ -4328,6 +4442,22 @@ class Aidy:
             self.voice.play_or_tts("close_app_fail", "Sorry, I couldn't close it")
             self._deafen_after_speak()
             self._sleep_error()
+            ui_state("IDLE")
+            self.history.break_chain()
+            return False
+
+        if t0 in MOUSE_COMMAND_PHRASES:
+            ui_state("EXECUTING")
+            try:
+                mouse_result = execute_mouse_command(t0)
+                if mouse_result:
+                    info(f"Mouse: {mouse_result}")
+                    self._set_last_command(text)
+                    self._record_action(mouse_result, {})
+                    ui_state("IDLE")
+                    return True
+            except Exception as e:
+                error(f"Mouse command failed: {e}")
             ui_state("IDLE")
             self.history.break_chain()
             return False
@@ -4598,7 +4728,6 @@ class Aidy:
             self._deafen_after_speak()
 
             ui_state("EXECUTING")
-            self._set_last_command(text)
             ok = launch_app(app)
 
             if ok:
@@ -4708,113 +4837,231 @@ class Aidy:
 
     # ── Voice-auth helpers ─────────────────────────────────────────────────
 
+    def _flush_stream_buffer(self):
+        """Drain all pending data from the mic stream to discard stale noise."""
+        if self.stream is None:
+            return
+        try:
+            avail = self.stream.get_read_available()
+            chunks_to_read = min(50, max(0, avail // CHUNK_SAMPLES))
+            for _ in range(chunks_to_read):
+                self.stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+        except Exception:
+            pass
+
+    # Known Vosk hallucinations when the user says "aidy" (OOV word).
+    _AIDY_VOSK_ALIASES = {
+        "aidy", "eighty", "eddie", "eddy", "a d", "lady", "hey d",
+        "a b", "id", "maybe", "edie", "eadie", "eady",
+        "eighty's", "eighties", "eightie", "edie's",
+        "eighty one", "eighty two",
+        "hey dee", "hey de", "a de", "a dee",
+        "eighty eighty",
+        "a t", "eiti", "aide", "eidi", "heady",
+        "adi", "ady", "aidi", "eidy", "edi",
+    }
+
+    def _enrollment_phrase_match(self, phrase: str, result: str) -> bool:
+        p = phrase.lower().strip()
+        r = result.lower().strip()
+        if not r:
+            return False
+
+        # For "aidy": accept any known Vosk alias/hallucination.
+        if p == "aidy":
+            r_tokens = set(r.split())
+            for alias in self._AIDY_VOSK_ALIASES:
+                if alias in r or alias in r_tokens:
+                    return True
+            return False
+
+        # Standard substring match for all other phrases.
+        return p in r or r in p
+
     def _run_admin_enrollment(self) -> None:
         """Interactive Admin voice enrollment flow triggered by the UI 'Enroll Voice' button."""
-        ui_state("SPEAKING")
-        self.voice.tts_blocking(
-            "Administrator setup. Please say exactly: register my voice."
-        )
-        self._deafen_after_speak(500)
+        try:
+            self._drain_control_commands()
+            self._enrollment_cancel_requested = False
+            self._enrollment_in_progress = True
 
-        result = self.listen_command_vosk(
-            use_grammar=True,
-            grammar_phrases=["register my voice", "cancel"],
-        )
+            print("EVENT:ENROLL_STARTED", flush=True)
 
-        if not result or "cancel" in result.lower():
-            ui_state("SPEAKING")
-            self.voice.tts_blocking("Enrollment cancelled.")
-            self._deafen_after_speak()
-            ui_state("IDLE")
+            enroll_dir = os.path.join(self.base_dir, "VoiceProfiles")
+            os.makedirs(enroll_dir, exist_ok=True)
+
+            if self.stream is not None:
+                self.stop_stream()
+            self.stream = self.audio.open(
+                format=pyaudio.paInt16, channels=1, rate=SAMPLE_RATE,
+                input=True, frames_per_buffer=CHUNK_SAMPLES,
+            )
+            self.stream.start_stream()
+
+            from .voice_auth import _estimate_snr_db, MIN_ENROLLMENT_SNR_DB, MIN_ENROLLMENT_SNR_DB_DEGRADED
+
+            # 4 phonetically balanced phrases for a richer biometric embedding.
+            # These prompts elicit natural speech; we use FREE-FORM recognition
+            # (no grammar) so Vosk can detect ANY speech — we only need audio, not
+            # an exact transcript match.
+            phrases_to_say = [
+                "my name is admin",
+                "hey aidy open the browser please",
+                "set a timer for five minutes",
+                "she had your dark suit in greasy wash water all year",
+            ]
+            total = len(phrases_to_say)
+            audio_segments: list[bytes] = []
+
+            print("CONTROL:enroll_text:Preparing...|", flush=True)
+            self.voice.tts_fire_and_forget("Voice ID setup. I will ask you to say four phrases.")
+            time.sleep(1.8)
+
+            for i, phrase in enumerate(phrases_to_say):
+                progress = f"Phrase {i + 1} of {total}"
+                captured = False
+                max_attempts = 4
+
+                for attempt in range(1, max_attempts + 1):
+                    print(f"CONTROL:enroll_text:Say: '{phrase}'|{progress}", flush=True)
+                    self.voice.tts_fire_and_forget(f"Please say: {phrase}")
+                    time.sleep(1.2)
+
+                    self._flush_stream_buffer()
+                    self._deafen_until = 0.0
+                    self._last_audio_buffer = b""
+
+                    # Free-form recognition — accept ANY speech.
+                    # We care about capturing voice audio, not exact words.
+                    result = self.listen_command_vosk(
+                        use_grammar=False,
+                        max_seconds=8,
+                        min_listen_ms=800,
+                        speak_on_empty=False,
+                        ui_state_label="LISTENING",
+                        vad_threshold=40,
+                        silence_stop_override_ms=2000,
+                        force_listen=True,
+                    )
+
+                    # Check for cancellation via control command
+                    if getattr(self, "_enrollment_cancel_requested", False):
+                        print("CONTROL:enroll_text:Cancelled.|", flush=True)
+                        self.voice.tts_fire_and_forget("Cancelled.")
+                        print("EVENT:ENROLLMENT_FINISHED", flush=True)
+                        return
+
+                    # Accept any non-empty Vosk result as valid speech
+                    if result and result.strip():
+                        audio_data = self._last_audio_buffer
+                        if audio_data and len(audio_data) >= 6400:  # at least 0.2s
+                            snr = _estimate_snr_db(audio_data)
+                            if snr < MIN_ENROLLMENT_SNR_DB:
+                                if snr >= MIN_ENROLLMENT_SNR_DB_DEGRADED and attempt >= 2:
+                                    info(f"[ENROLL] Phrase {i+1}: accepted at degraded SNR ({snr:.0f}dB)")
+                                elif max_attempts - attempt > 0:
+                                    print(f"CONTROL:enroll_text:Noisy (SNR {snr:.0f}dB), try again|{progress}", flush=True)
+                                    self.voice.tts_fire_and_forget("A bit noisy, please try again.")
+                                    time.sleep(1.0)
+                                    continue
+                            audio_segments.append(audio_data)
+                            print(f"CONTROL:enroll_text:✓ Accepted!|{progress}", flush=True)
+                            try:
+                                self.voice.play_key("success")
+                            except Exception:
+                                pass
+                            time.sleep(0.6)
+                            captured = True
+                            break
+
+                    if max_attempts - attempt > 0:
+                        print(f"CONTROL:enroll_text:Try again, speak clearly|{progress}", flush=True)
+                        self.voice.tts_fire_and_forget("I didn't hear you. Please speak clearly.")
+                        time.sleep(1.0)
+
+                if not captured:
+                    print("CONTROL:enroll_text:Failed.|", flush=True)
+                    self.voice.tts_fire_and_forget("Failed. Try again later.")
+                    print("EVENT:ENROLLMENT_FINISHED", flush=True)
+                    return
+
+            print("CONTROL:enroll_text:Saving voice...|Processing", flush=True)
+            timestamp = int(time.time())
+            filepath = os.path.join(enroll_dir, f"Admin_Voice_{timestamp}.wav")
+            # Save concatenated audio as backup WAV
+            combined_audio = b"".join(audio_segments)
+            try:
+                with wave.open(filepath, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(SAMPLE_RATE)
+                    wf.writeframes(combined_audio)
+            except Exception as e:
+                info(f"[ENROLL] WAV save error: {e}")
+
+            label = f"Admin_{timestamp}"
+            print("CONTROL:enroll_text:Analyzing voice...|Processing", flush=True)
+            try:
+                ok, msg = self.voice_auth.enroll(audio_segments, role="Admin", label=label)
+                info(f"[ENROLL] result: ok={ok}, msg={msg}")
+            except Exception as e:
+                info(f"[ENROLL] enroll error: {e}")
+                ok = False
+
+            if ok:
+                print("CONTROL:enroll_text:✓ Voice recorded!|Done", flush=True)
+                self.voice.tts_fire_and_forget("Voice registered successfully.")
+            else:
+                print("CONTROL:enroll_text:Profile error.|", flush=True)
+                self.voice.tts_fire_and_forget("Profile creation failed.")
+
+            time.sleep(2.0)
+            print("EVENT:ENROLLMENT_FINISHED", flush=True)
+
+        except Exception as e:
+            info(f"[ENROLL] critical error: {e}")
+            print("CONTROL:enroll_text:Error occurred.|", flush=True)
+            print("EVENT:ENROLLMENT_FINISHED", flush=True)
+        finally:
+            self._enrollment_in_progress = False
+
+    # ── Embedding precomputation ───────────────────────────────────────
+    # Background thread extracts the speaker embedding while the wake-ack
+    # audio plays, so it's ready by the time _safe_process_command runs.
+    _precomputed_emb_future: "threading.Thread | None" = None
+    _precomputed_emb_result: object = None  # np.ndarray or None
+
+    def _start_embedding_precompute(self) -> None:
+        """Kick off background embedding extraction from the last audio buffer."""
+        if not self.voice_id_enabled or not hasattr(self, "voice_auth"):
+            return
+        audio = getattr(self, "_last_audio_buffer", b"")
+        if not audio or len(audio) < 6400:
             return
 
-        if "register" in result.lower() and self._last_audio_buffer:
-            import time as _time
-            label = f"Admin_{int(_time.time())}"
-            ok = self.voice_auth.enroll(
-                self._last_audio_buffer, role="Admin", label=label
-            )
-            ui_state("SPEAKING")
-            if ok:
-                self.voice.tts_blocking(
-                    "Voice registered. You are now enrolled as Administrator."
-                )
-            else:
-                self.voice.tts_blocking(
-                    "Enrollment failed. The audio sample was too short. Please try again."
-                )
-            self._deafen_after_speak()
-            ui_state("IDLE")
-        else:
-            ui_state("SPEAKING")
-            self.voice.tts_blocking(
-                "Could not capture voice sample. Please try again."
-            )
-            self._deafen_after_speak()
-            ui_state("IDLE")
+        import threading
 
-    def _voice_auth_grant(self, text: str) -> bool | None:
-        """
-        Detect and handle "grant [role] access [for N duration]" commands.
+        self._precomputed_emb_result = None
 
-        Returns True if handled successfully, False if it was a grant command
-        but failed, None if the text is not a grant command at all.
-        """
-        parsed = _parse_grant_command(text)
-        if parsed is None:
-            return None  # not a grant command
+        def _extract():
+            try:
+                self._precomputed_emb_result = self.voice_auth.extract_embedding(audio)
+            except Exception:
+                self._precomputed_emb_result = None
 
-        # Identify speaker – only Admins may grant access
-        role, sim, _ = self.voice_auth.identify(self._last_audio_buffer)
-        if role != "Admin":
-            msg = (
-                "Access denied: only the Administrator can grant access."
-                if role is not None
-                else "Voice not recognised. Administrator must be registered first."
-            )
-            ui_state("SPEAKING")
-            self.voice.tts_blocking(msg)
-            self._deafen_after_speak()
-            ui_state("IDLE")
-            return False
+        self._precomputed_emb_future = threading.Thread(target=_extract, daemon=True)
+        self._precomputed_emb_future.start()
 
-        target_role = parsed["role"]
-        expires_at = parsed["expires_at"]
+    def _get_precomputed_embedding(self):
+        """Return the precomputed embedding, waiting if still in progress."""
+        if self._precomputed_emb_future is not None:
+            self._precomputed_emb_future.join(timeout=5.0)
+            self._precomputed_emb_future = None
+        emb = self._precomputed_emb_result
+        self._precomputed_emb_result = None
+        return emb
 
-        if self.voice_auth.last_unknown_embedding is None:
-            ui_state("SPEAKING")
-            self.voice.tts_blocking(
-                "No unknown voice is waiting. Ask the person to say something first."
-            )
-            self._deafen_after_speak()
-            ui_state("IDLE")
-            return False
-
-        ok = self.voice_auth.grant_access(role=target_role, expires_at=expires_at)
-        ui_state("SPEAKING")
-        if ok:
-            if expires_at is None:
-                duration_str = "permanently"
-            else:
-                mins = max(1, int((expires_at - time.time()) / 60))
-                hours = mins // 60
-                rem_mins = mins % 60
-                if hours > 0:
-                    duration_str = f"for {hours} hour{'s' if hours != 1 else ''}"
-                    if rem_mins:
-                        duration_str += f" and {rem_mins} minute{'s' if rem_mins != 1 else ''}"
-                else:
-                    duration_str = f"for {mins} minute{'s' if mins != 1 else ''}"
-            self.voice.tts_blocking(
-                f"{target_role} access granted {duration_str}."
-            )
-        else:
-            self.voice.tts_blocking("Failed to grant access.")
-        self._deafen_after_speak()
-        ui_state("IDLE")
-        return ok
-
-    def _voice_auth_check(self, text: str) -> bool:
+    def _voice_auth_check(self, text: str, precomputed_emb=None) -> bool:
         """
         Verify that the current speaker is authorised to run the command
         described by *text*.  Plays an "Access denied" response and returns
@@ -4824,7 +5071,8 @@ class Aidy:
         intent_key = " ".join((text or "").strip().lower().split())
 
         allowed, role_label, reason = self.voice_auth.authorize(
-            self._last_audio_buffer, intent=intent_key
+            self._last_audio_buffer, intent=intent_key,
+            precomputed_emb=precomputed_emb,
         )
         if not allowed:
             info(f"[RBAC] blocked role='{role_label}' intent='{intent_key}'")
@@ -4836,6 +5084,80 @@ class Aidy:
 
         info(f"[RBAC] allowed role='{role_label}' sim OK intent='{intent_key}'")
         return True
+
+    def _voice_auth_grant(self, text: str, precomputed_emb=None):
+        """Detect and handle grant-access / revoke / list-users voice commands.
+
+        Returns:
+            True  – grant command processed successfully
+            False – grant command recognised but failed
+            None  – text was NOT a grant command (caller should proceed normally)
+        """
+        t = " ".join((text or "").strip().lower().split())
+
+        # ── "list users" ──────────────────────────────────────────────
+        if t in ("list users", "list user"):
+            users = self.voice_auth.list_users()
+            if not users:
+                ui_state("SPEAKING")
+                self.voice.tts_blocking("No users enrolled.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return True
+            names = ", ".join(f"{u['label']} as {u['role']}" for u in users)
+            ui_state("SPEAKING")
+            self.voice.tts_blocking(f"Enrolled users: {names}")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return True
+
+        # ── "revoke access" ───────────────────────────────────────────
+        if t == "revoke access":
+            # Only Admin can revoke
+            role, *_ = self.voice_auth.identify(self._last_audio_buffer, precomputed_emb=precomputed_emb)
+            if role != "Admin":
+                ui_state("SPEAKING")
+                self.voice.tts_blocking("Only an administrator can revoke access.")
+                self._deafen_after_speak()
+                ui_state("IDLE")
+                return False
+            deleted = self.voice_auth.revoke_expired()
+            ui_state("SPEAKING")
+            if deleted:
+                self.voice.tts_blocking(f"Revoked {deleted} expired access entries.")
+            else:
+                self.voice.tts_blocking("No expired entries to revoke.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return True
+
+        # ── "grant <role> access [for <duration>]" ────────────────────
+        cmd = _parse_grant_command(text)
+        if cmd is None:
+            return None  # Not a grant command
+
+        # Verify the speaker is Admin before granting
+        role, *_ = self.voice_auth.identify(self._last_audio_buffer, precomputed_emb=precomputed_emb)
+        if role != "Admin":
+            ui_state("SPEAKING")
+            self.voice.tts_blocking("Only an administrator can grant access.")
+            self._deafen_after_speak()
+            ui_state("IDLE")
+            return False
+
+        success = self.voice_auth.grant_access(
+            role=cmd["role"],
+            expires_at=cmd["expires_at"],
+        )
+        ui_state("SPEAKING")
+        if success:
+            exp = "permanently" if cmd["expires_at"] is None else "temporarily"
+            self.voice.tts_blocking(f"{cmd['role']} access granted {exp}.")
+        else:
+            self.voice.tts_blocking("No pending unknown speaker to grant access to.")
+        self._deafen_after_speak()
+        ui_state("IDLE")
+        return success
 
     # ── Original safe-process (now with RBAC gate) ─────────────────────────
 
@@ -4869,14 +5191,19 @@ class Aidy:
             self._reset_recognition_after_command()
             return False
 
+        # Extract the speaker embedding ONCE and reuse across all auth
+        # checks.  This eliminates ~200-450ms of redundant ML inference
+        # that previously happened on every grant + RBAC call.
+        precomputed_emb = self._get_precomputed_embedding()
+
         # ── 1. Grant-command detection (before general auth) ─────────────
-        grant_result = self._voice_auth_grant(text)
+        grant_result = self._voice_auth_grant(text, precomputed_emb=precomputed_emb)
         if grant_result is not None:
             self._reset_recognition_after_command()
             return bool(grant_result)
 
         # ── 2. General RBAC check ─────────────────────────────────────────
-        if not self._voice_auth_check(text):
+        if not self._voice_auth_check(text, precomputed_emb=precomputed_emb):
             self._reset_recognition_after_command()
             return False
 
@@ -4932,7 +5259,15 @@ class Aidy:
                         self.end_window_switch(cancel=True)
                     self._handle_due_tasks()
                     ui_state("IDLE")
-                    time.sleep(0.02)
+                    # Block on control queue instead of busy-polling
+                    try:
+                        cmd = self._control_queue.get(timeout=0.1)
+                        try:
+                            self._handle_control_command(cmd)
+                        except Exception as e:
+                            warn(f"Control command failed '{cmd}': {e}")
+                    except queue.Empty:
+                        pass
                     continue
 
                 with self._study_lock:
@@ -5018,6 +5353,9 @@ class Aidy:
 
                 wake_tail = self.wait_for_wake()
                 self._handle_due_tasks()
+                if wake_tail == "__CONTROL_BREAK__":
+                    # Re-enter top of loop where _pending_admin_enrollment is checked.
+                    continue
                 if wake_tail == "__STUDY_RESTORE_PROMPT__":
                     self._maybe_offer_restore_workspace()
                     continue

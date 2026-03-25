@@ -14,6 +14,9 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Navigation;
 using System.Windows.Threading;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using WpfApp1.Models;
 using WpfApp1.Services;
 using WpfApp1.ViewModels;
@@ -28,10 +31,16 @@ namespace WpfApp1.Views
         private readonly AudioDeviceService _audioDeviceService;
         private readonly GlobalHotkeyService _pushToTalkHotkey;
 
+        // Display name → apps.json id mapping for preferred app ComboBoxes
+        private readonly Dictionary<string, string> _browserDisplayToId = new();
+        private readonly Dictionary<string, string> _musicDisplayToId = new();
+        private const string SystemDefaultLabel = "System Default";
+
         private DoubleAnimation _rotateSlow = null!;
         private DoubleAnimation _rotateFast = null!;
         private DoubleAnimation _glowIdle = null!;
         private DoubleAnimation _glowActive = null!;
+        private DoubleAnimation _glowCommandListening = null!;
         private DoubleAnimation _waveOff = null!;
         private DoubleAnimation _waveSpeaking = null!;
         private DoubleAnimation _waveProcessing = null!;
@@ -45,6 +54,8 @@ namespace WpfApp1.Views
         private readonly SolidColorBrush _studyTimerArcBrush = new(Color.FromRgb(0x57, 0xF2, 0x87));
         private const int WM_NCHITTEST = 0x0084;
         private const int HTTRANSPARENT = -1;
+        private const int WM_DEVICECHANGE = 0x0219;
+        private const int DBT_DEVNODES_CHANGED = 0x0007;
         private bool _isCompactMode;
         private string _pageBeforeCompact = "AIDY";
         private readonly double _normalShellWidth = 1413;
@@ -155,10 +166,33 @@ namespace WpfApp1.Views
                 : appConfig.Aidi.FilePath;
             _vm.AidiVolume = appConfig.Aidi.Volume;
             _vm.VoiceIdEnabled = appConfig.VoiceIdEnabled;
-            _vm.LocalModeEnabled = appConfig.LocalMode.Enabled;
-            var savedSlots = appConfig.LocalMode.Slots;
-            for (int i = 0; i < Math.Min(savedSlots.Length, _vm.LocalModeSlots.Count); i++)
-                _vm.LocalModeSlots[i].Apply(savedSlots[i]);
+            _vm.CustomModeEnabled = appConfig.CustomMode.Enabled;
+            var savedSlots = appConfig.CustomMode.Slots;
+            // Load base 3 slots
+            for (int i = 0; i < Math.Min(savedSlots.Length, _vm.CustomModeSlots.Count); i++)
+                _vm.CustomModeSlots[i].Apply(savedSlots[i]);
+            // Add extra saved slots (4th, 5th) if they exist and have content
+            for (int i = _vm.CustomModeSlots.Count; i < Math.Min(savedSlots.Length, MainViewModel.CustomModeSlotsMax); i++)
+            {
+                if (!string.IsNullOrEmpty(savedSlots[i].Target))
+                {
+                    var extra = new CustomModeSlotViewModel(i);
+                    extra.Apply(savedSlots[i]);
+                    _vm.CustomModeSlots.Add(extra);
+                }
+            }
+            _vm.RefreshCanAddCustomSlot();
+
+            _vm.VadThreshold = appConfig.VoiceSensitivity.VadThreshold;
+            _vm.SilenceMs = appConfig.VoiceSensitivity.SilenceMs;
+            _vm.MinSpeechMs = appConfig.VoiceSensitivity.MinSpeechMs;
+            _vm.MouseMovePx = appConfig.MouseControl.MovePx;
+            _vm.MouseScrollClicks = appConfig.MouseControl.ScrollClicks;
+            _vm.MouseScrollStep = appConfig.MouseControl.ScrollStep;
+
+            PopulatePreferredAppOptions(baseDir);
+            _vm.PreferredBrowser = ResolvePreferredSelection(_vm.BrowserOptions, _browserDisplayToId, appConfig.PreferredApps.Browser);
+            _vm.PreferredMusicApp = ResolvePreferredSelection(_vm.MusicAppOptions, _musicDisplayToId, appConfig.PreferredApps.MusicApp);
 
             appConfig.AutoStartEnabled = syncedAutoStartEnabled;
             appConfig.Audio.Microphone = _vm.SelectedMicrophoneDevice;
@@ -168,8 +202,12 @@ namespace WpfApp1.Views
             appConfig.Aidi.Volume = _vm.AidiVolume;
             SafeSaveConfig(appConfig);
 
+            // Prefer bundled embedded Python; fall back to system "python"
+            var bundledPython = System.IO.Path.Combine(baseDir, "python-embed", "python.exe");
+            var pythonExe = System.IO.File.Exists(bundledPython) ? bundledPython : "python";
+
             _bridge = new PythonBridge(
-                pythonExe: "python",
+                pythonExe: pythonExe,
                 scriptPath: scriptPath,
                 workingDir: baseDir
             );
@@ -182,40 +220,46 @@ namespace WpfApp1.Views
 
             _waveformTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(70)
+                Interval = TimeSpan.FromMilliseconds(120)
             };
             _waveformTimer.Tick += WaveformTimerOnTick;
             _studyTimerUiTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(33),
+                Interval = TimeSpan.FromMilliseconds(66),
             };
             _studyTimerUiTimer.Tick += StudyTimerUiTimerOnTick;
 
-            _bridge.StateChanged += s => Dispatcher.Invoke(() => { _vm.CurrentState = s; Console.WriteLine($"[UI] State changed to {s}"); });
+            // PERF: Use BeginInvoke (async dispatch) instead of Invoke (sync) to
+            // decouple the PumpStreamAsync I/O tasks from UI thread latency.
+            // Invoke blocks the reader thread until the UI completes, which
+            // back-pressures Python's stdout and stalls the voice recognition loop.
+            _bridge.StateChanged += s => Dispatcher.BeginInvoke(() => { _vm.CurrentState = s; Console.WriteLine($"[UI] State changed to {s}"); });
             // Logs are intentionally hidden from UI.
-            // _bridge.LogLine += line => Dispatcher.Invoke(() => AppendBridgeLogLine(line));
+            // _bridge.LogLine += line => Dispatcher.BeginInvoke(() => AppendBridgeLogLine(line));
 
             // Show last command, but hide internal/system keywords (exit, etc.)
-            _bridge.CommandHeard += t => Dispatcher.Invoke(() =>
+            _bridge.CommandHeard += t => Dispatcher.BeginInvoke(() =>
             {
                 _vm.LastCommand = FormatUserFacingCommand(t);
             });
-            _bridge.TimerChanged += (eventName, remaining, total) => Dispatcher.Invoke(() =>
+            _bridge.TimerChanged += (eventName, remaining, total) => Dispatcher.BeginInvoke(() =>
             {
                 var e = (eventName ?? "").Trim().ToLowerInvariant();
                 UpdateTimerBadge(e, remaining, total);
             });
-            _bridge.StudyModeChanged += active => Dispatcher.Invoke(() =>
+            _bridge.StudyModeChanged += active => Dispatcher.BeginInvoke(() =>
             {
                 StudyTipsPanel.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
             });
-            _bridge.LocalModeChanged += active => Dispatcher.Invoke(() =>
+            _bridge.CustomModeChanged += active => Dispatcher.BeginInvoke(() =>
             {
-                _vm.LocalModeEnabled = active;
-                SaveCurrentConfig();
+                Debug.WriteLine($"[CustomMode] Bridge reports custom mode changed: {active}");
+                _vm.AppendLogLine($"[CustomMode] Bridge event: custom mode = {active}");
+                // Slots are already executed by Python directly — do NOT re-send
+                // execute_slot commands back, as that causes double execution.
             });
-            _bridge.VoiceActivityChanged += active => Dispatcher.Invoke(() => SetEmblemActive(active));
-            _bridge.EnrollmentFinished += () => Dispatcher.Invoke(() =>
+            _bridge.VoiceActivityChanged += active => Dispatcher.BeginInvoke(() => SetEmblemActive(active));
+            _bridge.EnrollmentFinished += () => Dispatcher.BeginInvoke(() =>
             {
                 // Python explicitly signalled the end of enrollment — safe to close the overlay.
                 _enrollmentTimeoutTimer?.Stop();
@@ -223,17 +267,21 @@ namespace WpfApp1.Views
                 _enrollmentConfirmedByPython = false;
                 EnrollmentOverlay.Visibility = Visibility.Collapsed;
             });
-            _bridge.EnrollmentStarted += () => Dispatcher.Invoke(() =>
+            _bridge.EnrollmentStarted += () => Dispatcher.BeginInvoke(() =>
             {
                 // Python acknowledged the enrollment — cancel button is now safe to use.
                 Debug.WriteLine("[Enroll] Python confirmed ENROLL_STARTED.");
                 _enrollmentTimeoutTimer?.Stop();
                 _enrollmentConfirmedByPython = true;
             });
-            _bridge.EnrollmentTextChanged += (status, progress) => Dispatcher.Invoke(() =>
+            _bridge.EnrollmentTextChanged += (status, progress) => Dispatcher.BeginInvoke(() =>
             {
                 EnrollmentStatusText.Text = status;
                 EnrollmentProgressText.Text = progress;
+            });
+            _bridge.VoiceUsersChanged += (entries) => Dispatcher.BeginInvoke(() =>
+            {
+                _vm.UpdateVoiceUsers(entries);
             });
 
             Loaded += (_, __) =>
@@ -345,6 +393,12 @@ namespace WpfApp1.Views
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+            if (msg == WM_DEVICECHANGE && (int)wParam == DBT_DEVNODES_CHANGED)
+            {
+                RefreshAudioDevices();
+                return IntPtr.Zero;
+            }
+
             if (msg != WM_NCHITTEST)
             {
                 return IntPtr.Zero;
@@ -390,7 +444,7 @@ namespace WpfApp1.Views
                     edgeMaxHeight: 50,
                     centerMinHeight: 24,
                     centerMaxHeight: 88,
-                    blend: 0.68);
+                    blend: 0.82);
             }
 
             if (FollowUpWave.Visibility == Visibility.Visible)
@@ -401,7 +455,7 @@ namespace WpfApp1.Views
                     edgeMaxHeight: 46,
                     centerMinHeight: 22,
                     centerMaxHeight: 82,
-                    blend: 0.64);
+                    blend: 0.78);
             }
 
             if (SpeakingWave.Visibility != Visibility.Visible && FollowUpWave.Visibility != Visibility.Visible)
@@ -482,8 +536,10 @@ namespace WpfApp1.Views
                 return;
             }
 
-            if (e.PropertyName == nameof(MainViewModel.LocalModeEnabled))
+            if (e.PropertyName == nameof(MainViewModel.CustomModeEnabled))
             {
+                Debug.WriteLine($"[CustomMode] Toggle changed: enabled={_vm.CustomModeEnabled}");
+                _vm.AppendLogLine($"[CustomMode] Toggle changed: enabled={_vm.CustomModeEnabled}");
                 SaveCurrentConfig();
                 return;
             }
@@ -494,6 +550,21 @@ namespace WpfApp1.Views
                 e.PropertyName == nameof(MainViewModel.AidiFilePath))
             {
                 SaveCurrentConfig();
+                return;
+            }
+
+            if (e.PropertyName == nameof(MainViewModel.VadThreshold) ||
+                e.PropertyName == nameof(MainViewModel.SilenceMs) ||
+                e.PropertyName == nameof(MainViewModel.MinSpeechMs) ||
+                e.PropertyName == nameof(MainViewModel.MouseMovePx) ||
+                e.PropertyName == nameof(MainViewModel.MouseScrollClicks) ||
+                e.PropertyName == nameof(MainViewModel.MouseScrollStep))
+            {
+                SaveCurrentConfig();
+                if (_bridgeStarted)
+                {
+                    _bridge.SendControlCommand("reload_config");
+                }
                 return;
             }
 
@@ -513,6 +584,19 @@ namespace WpfApp1.Views
                 if (_bridgeStarted)
                 {
                     _bridge.SendControlCommand($"set_voice_id:{(_vm.VoiceIdEnabled ? "1" : "0")}");
+                    if (_vm.VoiceIdEnabled)
+                        _bridge.SendControlCommand("list_voice_users");
+                }
+                return;
+            }
+
+            if (e.PropertyName == nameof(MainViewModel.PreferredBrowser) ||
+                e.PropertyName == nameof(MainViewModel.PreferredMusicApp))
+            {
+                SaveCurrentConfig();
+                if (_bridgeStarted)
+                {
+                    _bridge.SendControlCommand("reload_config");
                 }
                 return;
             }
@@ -559,6 +643,16 @@ namespace WpfApp1.Views
             }
 
             _vm.IsPushToTalkKeyCaptureActive = !_vm.IsPushToTalkKeyCaptureActive;
+        }
+
+        private void ResetVoiceSensitivity_Click(object sender, RoutedEventArgs e)
+        {
+            _vm.ResetVoiceSensitivity();
+        }
+
+        private void ResetMouseControl_Click(object sender, RoutedEventArgs e)
+        {
+            _vm.ResetMouseControl();
         }
 
         private void EnrollAdminVoice_Click(object sender, RoutedEventArgs e)
@@ -755,28 +849,103 @@ namespace WpfApp1.Views
             }
         }
 
-        private void LocalModeSlot_Click(object sender, RoutedEventArgs e)
+        private void CustomModeSlot_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is not Button { Tag: int idx }) return;
-            if (idx < 0 || idx >= _vm.LocalModeSlots.Count) return;
+            Debug.WriteLine("[CustomMode] CustomModeSlot_Click fired");
+            _vm.AppendLogLine("[CustomMode] Slot assign click");
 
-            var picker = new LocalModePickerWindow(idx) { Owner = this };
+            if (sender is not Button { Tag: int idx }) return;
+            if (idx < 0 || idx >= _vm.CustomModeSlots.Count) return;
+
+            _vm.AppendLogLine($"[CustomMode] Opening picker for slot {idx}");
+            var picker = new CustomModePickerWindow(idx) { Owner = this };
             if (picker.ShowDialog() == true && picker.Result is { } result)
             {
-                var slot = _vm.LocalModeSlots[idx];
+                var slot = _vm.CustomModeSlots[idx];
                 slot.ActionType  = result.ActionType;
                 slot.Target      = result.Target;
                 slot.DisplayName = result.DisplayName;
+                _vm.AppendLogLine($"[CustomMode] Slot {idx} assigned: {result.ActionType}|{result.Target}|{result.DisplayName}");
                 SaveCurrentConfig();
+            }
+            else
+            {
+                _vm.AppendLogLine("[CustomMode] Picker cancelled or no result");
             }
         }
 
-        private void LocalModeSlotClear_Click(object sender, RoutedEventArgs e)
+        private void CustomModeSlotClear_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not Button { Tag: int idx }) return;
-            if (idx < 0 || idx >= _vm.LocalModeSlots.Count) return;
-            _vm.LocalModeSlots[idx].Clear();
+            if (idx < 0 || idx >= _vm.CustomModeSlots.Count) return;
+
+            // Extra slots (beyond the base 3): remove entirely instead of clearing
+            if (idx >= MainViewModel.CustomModeSlotsMin)
+            {
+                _vm.CustomModeSlots.RemoveAt(idx);
+                // Re-index remaining slots so badge numbers stay correct
+                for (int i = 0; i < _vm.CustomModeSlots.Count; i++)
+                {
+                    var s = _vm.CustomModeSlots[i];
+                    if (s.Index != i)
+                    {
+                        // Replace with a new VM at the correct index, preserving data
+                        var replacement = new CustomModeSlotViewModel(i);
+                        replacement.Apply(s.ToModel());
+                        _vm.CustomModeSlots[i] = replacement;
+                    }
+                }
+                _vm.RefreshCanAddCustomSlot();
+            }
+            else
+            {
+                _vm.CustomModeSlots[idx].Clear();
+            }
             SaveCurrentConfig();
+        }
+
+        private void CustomModeAddSlot_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vm.CustomModeSlots.Count >= MainViewModel.CustomModeSlotsMax) return;
+            var newIndex = _vm.CustomModeSlots.Count;
+            _vm.CustomModeSlots.Add(new CustomModeSlotViewModel(newIndex));
+            _vm.RefreshCanAddCustomSlot();
+            SaveCurrentConfig();
+        }
+
+        private void CustomSlotExecute_Click(object sender, RoutedEventArgs e)
+        {
+            Debug.WriteLine($"[CustomMode] CustomSlotExecute_Click fired, sender={sender?.GetType().Name}");
+            _vm.AppendLogLine("[CustomMode] CustomSlotExecute_Click fired");
+
+            if (sender is not Button { Tag: int idx })
+            {
+                Debug.WriteLine("[CustomMode] sender is not Button with int Tag — aborting");
+                _vm.AppendLogLine("[CustomMode] ERROR: sender is not Button with int Tag");
+                return;
+            }
+
+            Debug.WriteLine($"[CustomMode] slot index={idx}, slots count={_vm.CustomModeSlots.Count}");
+            _vm.AppendLogLine($"[CustomMode] slot index={idx}");
+
+            if (idx < 0 || idx >= _vm.CustomModeSlots.Count)
+            {
+                _vm.AppendLogLine($"[CustomMode] ERROR: index {idx} out of range");
+                return;
+            }
+
+            var slot = _vm.CustomModeSlots[idx];
+            if (slot.IsEmpty)
+            {
+                _vm.AppendLogLine("[CustomMode] slot is empty — nothing to execute");
+                return;
+            }
+
+            var model = slot.ToModel();
+            var payload = $"{model.ActionType}|{model.Target}|{model.DisplayName}";
+            _vm.AppendLogLine($"[CustomMode] sending execute_slot:{payload}");
+            var sent = _bridge.SendControlCommand($"execute_slot:{payload}");
+            _vm.AppendLogLine($"[CustomMode] SendControlCommand returned: {sent}");
         }
 
         private void BrowseAidiFile_Click(object sender, RoutedEventArgs e)
@@ -938,6 +1107,25 @@ namespace WpfApp1.Views
             }
         }
 
+        private DateTime _lastDeviceRefresh = DateTime.MinValue;
+
+        private void RefreshAudioDevices()
+        {
+            // Debounce: WM_DEVICECHANGE fires multiple times per plug/unplug event.
+            var now = DateTime.UtcNow;
+            if ((now - _lastDeviceRefresh).TotalMilliseconds < 500)
+                return;
+            _lastDeviceRefresh = now;
+
+            var inputDevices = _audioDeviceService.GetInputDevices();
+            var outputDevices = _audioDeviceService.GetOutputDevices();
+            _vm.SetAudioDevices(
+                inputDevices,
+                outputDevices,
+                _vm.SelectedMicrophoneDevice,
+                _vm.SelectedOutputDevice);
+        }
+
         private void SaveCurrentConfig()
         {
             var hotkey = ParsePushToTalkKey(_vm.PushToTalkKey);
@@ -962,10 +1150,27 @@ namespace WpfApp1.Views
                     FilePath = normalizedAidiPath,
                     Volume = _vm.AidiVolume,
                 },
-                LocalMode = new LocalModeConfig
+                CustomMode = new CustomModeConfig
                 {
-                    Enabled = _vm.LocalModeEnabled,
-                    Slots   = _vm.LocalModeSlots.Select(s => s.ToModel()).ToArray(),
+                    Enabled = _vm.CustomModeEnabled,
+                    Slots   = _vm.CustomModeSlots.Select(s => s.ToModel()).ToArray(),
+                },
+                VoiceSensitivity = new VoiceSensitivityConfig
+                {
+                    VadThreshold = _vm.VadThreshold,
+                    SilenceMs = _vm.SilenceMs,
+                    MinSpeechMs = _vm.MinSpeechMs,
+                },
+                MouseControl = new MouseControlConfig
+                {
+                    MovePx = _vm.MouseMovePx,
+                    ScrollClicks = _vm.MouseScrollClicks,
+                    ScrollStep = _vm.MouseScrollStep,
+                },
+                PreferredApps = new PreferredAppsConfig
+                {
+                    Browser = LookupAppId(_browserDisplayToId, _vm.PreferredBrowser),
+                    MusicApp = LookupAppId(_musicDisplayToId, _vm.PreferredMusicApp),
                 },
             });
         }
@@ -980,6 +1185,93 @@ namespace WpfApp1.Views
             {
                 Debug.WriteLine($"[Config] save failed: {ex}");
             }
+        }
+
+        // ── Preferred Apps: dynamic population from apps.json ──────
+
+        private void PopulatePreferredAppOptions(string baseDir)
+        {
+            _browserDisplayToId.Clear();
+            _musicDisplayToId.Clear();
+            _vm.BrowserOptions.Clear();
+            _vm.MusicAppOptions.Clear();
+
+            _vm.BrowserOptions.Add(SystemDefaultLabel);
+            _vm.MusicAppOptions.Add(SystemDefaultLabel);
+            _browserDisplayToId[SystemDefaultLabel] = string.Empty;
+            _musicDisplayToId[SystemDefaultLabel] = string.Empty;
+
+            var appsJsonPath = Path.Combine(baseDir, "apps.json");
+            if (!File.Exists(appsJsonPath)) return;
+
+            try
+            {
+                var json = File.ReadAllText(appsJsonPath);
+                var root = JsonNode.Parse(json) as JsonObject;
+                var apps = root?["apps"] as JsonArray;
+                if (apps == null) return;
+
+                foreach (var node in apps)
+                {
+                    if (node is not JsonObject app) continue;
+                    var id = app["id"]?.GetValue<string>()?.Trim() ?? "";
+                    var category = app["category"]?.GetValue<string>()?.Trim().ToLowerInvariant() ?? "";
+                    if (string.IsNullOrEmpty(id)) continue;
+
+                    var displayName = FormatAppDisplayName(id);
+
+                    if (category == "browser")
+                    {
+                        _browserDisplayToId[displayName] = id;
+                        _vm.BrowserOptions.Add(displayName);
+                    }
+                    else if (category == "music")
+                    {
+                        _musicDisplayToId[displayName] = id;
+                        _vm.MusicAppOptions.Add(displayName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[PreferredApps] apps.json parse failed: {ex}");
+            }
+        }
+
+        private static string FormatAppDisplayName(string appId)
+        {
+            // "yandex_browser" → "Yandex Browser", "chrome" → "Chrome"
+            var parts = appId.Split('_');
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Length > 0)
+                    parts[i] = char.ToUpper(parts[i][0]) + parts[i].Substring(1);
+            }
+            return string.Join(" ", parts);
+        }
+
+        private static string ResolvePreferredSelection(
+            System.Collections.ObjectModel.ObservableCollection<string> options,
+            Dictionary<string, string> displayToId,
+            string configId)
+        {
+            if (string.IsNullOrEmpty(configId))
+                return SystemDefaultLabel;
+
+            foreach (var kvp in displayToId)
+            {
+                if (string.Equals(kvp.Value, configId, StringComparison.OrdinalIgnoreCase))
+                    return kvp.Key;
+            }
+
+            return options.Count > 0 ? options[0] : SystemDefaultLabel;
+        }
+
+        private static string LookupAppId(Dictionary<string, string> displayToId, string? displayName)
+        {
+            if (string.IsNullOrEmpty(displayName) || displayName == SystemDefaultLabel)
+                return string.Empty;
+            return displayToId.TryGetValue(displayName, out var id) ? id : string.Empty;
         }
 
         private static Key ParsePushToTalkKey(string? raw)
@@ -1297,6 +1589,16 @@ namespace WpfApp1.Views
                 EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
             };
 
+            _glowCommandListening = new DoubleAnimation
+            {
+                From = 1.00,
+                To = 1.10,
+                Duration = new Duration(TimeSpan.FromSeconds(0.8)),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+
             _waveOff = new DoubleAnimation { To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(180)) };
 
             _waveSpeaking = new DoubleAnimation
@@ -1394,6 +1696,7 @@ namespace WpfApp1.Views
             WaitingHotkeySleep.Visibility = Visibility.Collapsed;
             SpeakingWave.Visibility = Visibility.Collapsed;
             FollowUpWave.Visibility = Visibility.Collapsed;
+            DeniedCross.Visibility = Visibility.Collapsed;
             CenterEmblem.Visibility = Visibility.Collapsed;
             _emblemVisible = false;
             if (_emblemSb != null) { _emblemSb.Stop(this); _emblemSb = null; }
@@ -1421,7 +1724,7 @@ namespace WpfApp1.Views
                     StartRing("SB_Ring_Listening");
                     break;
                 case AidyState.CommandListening:
-                    StartRing("SB_Ring_Listening");
+                    StartRing("SB_Ring_CommandListening");
                     break;
                 case AidyState.Processing:
                     StartRing("SB_Ring_Processing");
@@ -1435,6 +1738,12 @@ namespace WpfApp1.Views
                 case AidyState.FollowUp:
                     StartRing("SB_Ring_FollowUp");
                     break;
+                case AidyState.GrantRole:
+                    StartRing("SB_Ring_GrantRole");
+                    break;
+                case AidyState.GrantDuration:
+                    StartRing("SB_Ring_GrantDuration");
+                    break;
 
                 case AidyState.Executing:
                     StartRing("SB_Ring_Executing");
@@ -1444,6 +1753,9 @@ namespace WpfApp1.Views
                     break;
                 case AidyState.Warning:
                     StartRing("SB_Ring_Warning");
+                    break;
+                case AidyState.AccessDenied:
+                    StartRing("SB_Ring_AccessDenied");
                     break;
                 case AidyState.Error:
                     StartRing("SB_Ring_Error");
@@ -1488,7 +1800,6 @@ namespace WpfApp1.Views
                     break;
 
                 case AidyState.Listening:
-                case AidyState.CommandListening:
                     Wave.Opacity = 1;
                     Wave.Visibility = Visibility.Collapsed;
                     CenterEmblem.Visibility = Visibility.Visible;
@@ -1496,6 +1807,19 @@ namespace WpfApp1.Views
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+
+                case AidyState.CommandListening:
+                    Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
+                    CenterEmblem.Visibility = Visibility.Visible;
+                    _emblemVisible = true;
+                    // Faster rotation + bigger glow = "I heard you, speak now!"
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateFast);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowCommandListening);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowCommandListening);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
                     break;
@@ -1538,6 +1862,25 @@ namespace WpfApp1.Views
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
                     break;
+                case AidyState.GrantRole:
+                    Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
+                    CenterEmblem.Visibility = Visibility.Visible;
+                    _emblemVisible = true;
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+                case AidyState.GrantDuration:
+                    Wave.Opacity = 1;
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
 
                 case AidyState.Executing:
                     Wave.Opacity = 1;
@@ -1563,6 +1906,14 @@ namespace WpfApp1.Views
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+
+                case AidyState.AccessDenied:
+                    Wave.Visibility = Visibility.Collapsed;
+                    DeniedCross.Visibility = Visibility.Visible;
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
                     break;
 
                 case AidyState.Error:
@@ -1760,7 +2111,12 @@ namespace WpfApp1.Views
         private void NavAidy_Click(object sender, RoutedEventArgs e) => ShowPage("AIDY");
         private void NavCommands_Click(object sender, RoutedEventArgs e) => ShowPage("COMMANDS");
         private void NavContacts_Click(object sender, RoutedEventArgs e) => ShowPage("CONTACTS");
-        private void NavSettings_Click(object sender, RoutedEventArgs e) => ShowPage("SETTINGS");
+        private void NavSettings_Click(object sender, RoutedEventArgs e)
+        {
+            ShowPage("SETTINGS");
+            if (_bridgeStarted && _vm.VoiceIdEnabled)
+                _bridge.SendControlCommand("list_voice_users");
+        }
 
         private void ShowPage(string page)
         {

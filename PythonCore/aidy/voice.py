@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import glob
+import queue
 import random
 import time
 import re
@@ -23,7 +24,7 @@ class Voice:
         self.base_dir = base_dir
         self.muted = False
         self.current_volume = 100
-        self._thread_engine = None  # Reusable pyttsx3 engine for TTS worker thread
+        self._thread_engine = None  # pyttsx3 engine owned by the dedicated TTS thread
 
         candidates = [
             os.path.join(base_dir, "Assets", "voice"),
@@ -33,14 +34,11 @@ class Voice:
         ]
         self.voice_dir = next((p for p in candidates if os.path.isdir(p)), candidates[0])
 
-        # ── pyttsx3 ───────────────────────────────────────────────────────
-        self.engine = None
+        # Probe pyttsx3 availability once (no engine kept — all TTS goes
+        # through the dedicated worker thread to avoid COM apartment conflicts).
         try:
-            self.engine = pyttsx3.init()
-            self.engine.setProperty("rate", 188)
-            self.engine.setProperty("volume", 1.0)
-
-            voices = self.engine.getProperty("voices")
+            probe = pyttsx3.init()
+            voices = probe.getProperty("voices")
             chosen = None
             female_id = None
             for v in voices:
@@ -51,25 +49,16 @@ class Voice:
                     break
                 if female_id is None and "female" in name:
                     female_id = v.id
-            if chosen:
-                self.engine.setProperty("voice", chosen)
-            elif female_id:
-                self.engine.setProperty("voice", female_id)
-
             print(f"[VOICE] pyttsx3 OK, voices={len(voices)}, chosen={chosen or female_id}", flush=True)
+            del probe  # Release immediately — never keep a main-thread engine
         except Exception as e:
             print(f"[VOICE] !!! pyttsx3 INIT FAILED: {e}", flush=True)
-            self.engine = None
 
     # ── Volume ─────────────────────────────────────────────────────────────
     def set_volume(self, vol: int):
         vol = max(0, min(100, int(vol)))
         self.current_volume = vol
-        if self.engine:
-            try:
-                self.engine.setProperty("volume", vol / 100.0)
-            except Exception:
-                pass
+        # Volume is applied to _thread_engine on next TTS call via _ensure_tts_engine
         print(f"[VOICE] Volume set to {vol}%", flush=True)
 
     # ── Text cleanup (from repo) ──────────────────────────────────────────
@@ -140,63 +129,81 @@ class Voice:
         return self.tts_blocking(fallback_text)
 
     # ── TTS ────────────────────────────────────────────────────────────────
-    # Lock serialises TTS calls so overlapping fire-and-forget requests
-    # don't fight over COM / SAPI resources.
-    _tts_lock = threading.Lock()
+    # A single persistent daemon thread owns the pyttsx3 COM engine.
+    # All TTS requests go through a queue so COM apartment threading is
+    # never violated (the engine is created, used, and lives on ONE thread).
+    _tts_queue: queue.Queue | None = None
+    _tts_thread: threading.Thread | None = None
 
-    def _ensure_tts_engine(self):
-        """Create or reuse a pyttsx3 engine for the current thread."""
+    def _start_tts_thread(self) -> None:
+        """Spin up the persistent TTS worker thread (once)."""
+        if self._tts_thread is not None and self._tts_thread.is_alive():
+            return
+        self._tts_queue = queue.Queue()
+        self._tts_thread = threading.Thread(target=self._tts_loop, daemon=True)
+        self._tts_thread.start()
+
+    def _tts_loop(self) -> None:
+        """Persistent loop: owns the pyttsx3 engine for its entire lifetime."""
         try:
             import pythoncom
             pythoncom.CoInitialize()
         except (ImportError, Exception):
             pass
-        if self._thread_engine is None:
-            self._thread_engine = pyttsx3.init()
-            self._thread_engine.setProperty("rate", 188)
-            voices = self._thread_engine.getProperty("voices")
+
+        engine = None
+        try:
+            engine = pyttsx3.init()
+            engine.setProperty("rate", 188)
+            voices = engine.getProperty("voices")
             for v in voices:
                 name = (getattr(v, "name", "") or "").lower()
                 if "zira" in name:
-                    self._thread_engine.setProperty("voice", v.id)
+                    engine.setProperty("voice", v.id)
                     break
-        self._thread_engine.setProperty("volume", self.current_volume / 100.0)
-        return self._thread_engine
+            print("[TTS-THREAD] Engine ready", flush=True)
+        except Exception as e:
+            print(f"[TTS-THREAD] Engine init failed: {e}", flush=True)
 
-    def _tts_worker(self, text: str, result_box: list | None):
-        """Run pyttsx3 say+runAndWait in a dedicated thread."""
-        try:
-            with self._tts_lock:
+        while True:
+            item = self._tts_queue.get()
+            if item is None:
+                break  # poison pill
+            text, result_event, result_box = item
+            try:
+                if engine is None:
+                    engine = pyttsx3.init()
+                    engine.setProperty("rate", 188)
+                engine.setProperty("volume", self.current_volume / 100.0)
                 print(f"[TTS-WORKER] START '{text}'", flush=True)
-                engine = self._ensure_tts_engine()
                 engine.say(text)
                 engine.runAndWait()
                 print(f"[TTS-WORKER] DONE '{text}'", flush=True)
                 if result_box is not None:
                     result_box.append(True)
-        except Exception as e:
-            print(f"[TTS-WORKER] ERROR: {e}", flush=True)
-            self._thread_engine = None  # Reset on failure so next call recreates
-            if result_box is not None:
-                result_box.append(False)
+            except Exception as e:
+                print(f"[TTS-WORKER] ERROR: {e}", flush=True)
+                engine = None  # recreate on next call
+                if result_box is not None:
+                    result_box.append(False)
+            finally:
+                if result_event is not None:
+                    result_event.set()
 
     def tts_blocking(self, text: str, timeout_sec: float = 5.0) -> bool:
-        """Speak text using pyttsx3 with a timeout guard.
-
-        Runs the TTS engine in a separate daemon thread so that a hung
-        ``runAndWait()`` cannot freeze the caller forever.
-        """
+        """Speak text using pyttsx3 with a timeout guard."""
         if self.muted:
             print(f"AIDY SPEAKING (muted, skipped): {text}", flush=True)
             return False
 
+        self._start_tts_thread()
         print(f"AIDY SPEAKING: {text}", flush=True)
-        result_box: list = []
-        t = threading.Thread(target=self._tts_worker, args=(text, result_box), daemon=True)
-        t.start()
-        t.join(timeout=timeout_sec)
 
-        if t.is_alive():
+        result_box: list = []
+        done_event = threading.Event()
+        self._tts_queue.put((text, done_event, result_box))
+
+        if not done_event.wait(timeout=timeout_sec):
             print(f"[TTS] TIMEOUT after {timeout_sec}s — runAndWait hung, proceeding anyway", flush=True)
             return False
 
@@ -205,14 +212,10 @@ class Voice:
         return ok
 
     def tts_fire_and_forget(self, text: str) -> None:
-        """Launch TTS in a background daemon thread without waiting.
-
-        The caller returns immediately.  Used during enrollment so TTS
-        can never block the microphone-listening flow.
-        """
+        """Queue TTS without waiting. Returns immediately."""
         if self.muted:
             print(f"AIDY TTS-FF (muted, skipped): {text}", flush=True)
             return
+        self._start_tts_thread()
         print(f"AIDY TTS-FF: launching '{text}'", flush=True)
-        t = threading.Thread(target=self._tts_worker, args=(text, None), daemon=True)
-        t.start()
+        self._tts_queue.put((text, None, None))

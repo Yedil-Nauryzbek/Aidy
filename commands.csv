@@ -184,17 +184,24 @@ open my yandex,open app
 launch yandex,open app
 start yandex browser,open app
 
-open yandex music,open app
-launch yandex music,open app
-start yandex music,open app
-run yandex music,open app
-open music,open app
-play music,open app
-start music,open app
-music,open app
-open my music,open app
-open the music,open app
-open music player,open app
+open yandex music,play_music
+launch yandex music,play_music
+start yandex music,play_music
+run yandex music,play_music
+yandex music,play_music
+open music,play_music
+play music,play_music
+start music,play_music
+music,play_music
+open my music,play_music
+open the music,play_music
+open music player,play_music
+play on yandex music,play_music
+play on music,play_music
+play a song,play_music
+i want to listen to music,play_music
+put on music,play_music
+put on some music,play_music
 
 open spotify,open app
 launch spotify,open app
@@ -366,19 +373,51 @@ close steam,close app
 quit steam,close app
 exit steam,close app
 
-local mode,local_mode
-local mode on,local_mode
-enable local mode,local_mode
-turn on local mode,local_mode
-start local mode,local_mode
-local mod,local_mode
-local mold,local_mode
-locale mode,local_mode
-local mode off,local_mode
-disable local mode,local_mode
-turn off local mode,local_mode
-stop local mode,local_mode
-exit local mode,local_mode
+custom mode,custom_mode
+custom mode on,custom_mode
+enable custom mode,custom_mode
+turn on custom mode,custom_mode
+start custom mode,custom_mode
+custom mod,custom_mode
+custom mold,custom_mode
+custom mode please,custom_mode
+personal mode,custom_mode
+personal mode on,custom_mode
+enable personal mode,custom_mode
+turn on personal mode,custom_mode
+start personal mode,custom_mode
+local mode,custom_mode
+local mode on,custom_mode
+enable local mode,custom_mode
+turn on local mode,custom_mode
+start local mode,custom_mode
+my mode,custom_mode
+my mode on,custom_mode
+start my mode,custom_mode
+quick mode,custom_mode
+quick mode on,custom_mode
+start quick mode,custom_mode
+custom mode off,custom_mode
+disable custom mode,custom_mode
+turn off custom mode,custom_mode
+stop custom mode,custom_mode
+exit custom mode,custom_mode
+personal mode off,custom_mode
+disable personal mode,custom_mode
+turn off personal mode,custom_mode
+stop personal mode,custom_mode
+exit personal mode,custom_mode
+local mode off,custom_mode
+disable local mode,custom_mode
+turn off local mode,custom_mode
+stop local mode,custom_mode
+exit local mode,custom_mode
+my mode off,custom_mode
+stop my mode,custom_mode
+exit my mode,custom_mode
+quick mode off,custom_mode
+stop quick mode,custom_mode
+exit quick mode,custom_mode
 
 mouse up,mouse_up
 mouse down,mouse_down

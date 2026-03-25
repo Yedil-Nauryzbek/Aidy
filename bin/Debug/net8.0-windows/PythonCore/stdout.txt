@@ -1,0 +1,89 @@
+STATE:STARTING
+22:32:42 [INFO ] Vosk model path: C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\vosk-model-small-en-us-0.15
+22:32:43 [INFO ] Command phrases loaded: 329 (from commands.csv)
+22:32:43 [INFO ] [CMD] accuracy_profile=legacy grammar_phrases=719
+22:32:43 [INFO ] Apps loaded: 17 (apps.json)
+[VOICE] pyttsx3 OK, voices=3, chosen=HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_ZIRA_11.0
+STATE:IDLE
+22:32:43 [INFO ] PTT config source=config enabled=True key=LeftCtrl
+Loaded the voice encoder model on cuda in 0.19 seconds.
+[VoiceAuth] resemblyzer encoder loaded
+22:32:43 [INFO ] AIDY start
+22:32:43 [INFO ] Mode: UI bridge | log=INFO
+22:32:43 [INFO ] API: http://127.0.0.1:8008/predict
+22:32:43 [INFO ] Grammar phrases: 719
+STATE:STARTING
+STATE:SPEAKING
+AIDY SPEAKING: Aidy is ready
+[TTS-WORKER] START 'Aidy is ready'
+[TTS] TIMEOUT after 10.0s — runAndWait hung, proceeding anyway
+22:32:53 [INFO ] [WAKE] audio stream started rate=16000 chunk=800
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE
+STATE:IDLE

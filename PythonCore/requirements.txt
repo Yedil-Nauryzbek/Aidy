@@ -5,4 +5,6 @@ pygame>=2.1.0
 pyautogui>=0.9.54
 numpy>=1.21.0
 scipy>=1.7.0
+speechbrain>=1.0.0
+huggingface_hub<1.0
 resemblyzer>=0.1.1.dev0

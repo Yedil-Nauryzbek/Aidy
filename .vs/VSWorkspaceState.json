@@ -1,7 +1,10 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\PythonCore",
+    "\\PythonCore\\aidy",
+    "\\Views"
   ],
-  "SelectedNode": "\\WpfApp1.slnx",
+  "SelectedNode": "\\Views\\MainWindow.xaml",
   "PreviewInSolutionExplorer": false
 }

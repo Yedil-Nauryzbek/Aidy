@@ -2,6 +2,7 @@
   "apps": [
     {
       "id": "chrome",
+      "category": "browser",
       "aliases": [
         "chrome",
         "google chrome",
@@ -17,6 +18,7 @@
     },
     {
       "id": "opera",
+      "category": "browser",
       "aliases": [
         "opera",
         "opera browser",
@@ -30,6 +32,7 @@
     },
     {
       "id": "yandex_browser",
+      "category": "browser",
       "aliases": [
         "yandex",
         "yandex browser",
@@ -46,6 +49,7 @@
     },
     {
       "id": "yandex_music",
+      "category": "music",
       "aliases": [
         "yandex music",
         "яндекс музыка",
@@ -63,6 +67,7 @@
 
     {
       "id": "telegram",
+      "category": "social",
       "aliases": [
         "telegram",
         "tg",
@@ -78,6 +83,7 @@
     },
     {
       "id": "discord",
+      "category": "social",
       "aliases": [
         "discord",
         "ds",
@@ -92,6 +98,7 @@
     },
     {
       "id": "spotify",
+      "category": "music",
       "aliases": [
         "spotify",
         "spotify app",
@@ -106,6 +113,7 @@
     },
     {
       "id": "explorer",
+      "category": "utility",
       "aliases": [
         "explorer",
         "file explorer",
@@ -119,10 +127,12 @@
       "type": "exe",
       "target": "explorer.exe",
       "args": [],
-      "process": "explorer.exe"
+      "process": "explorer.exe",
+      "safe_to_close": true
     },
     {
       "id": "settings",
+      "category": "utility",
       "aliases": [
         "settings",
         "windows settings",
@@ -135,10 +145,12 @@
       ],
       "type": "shell",
       "target": "ms-settings:",
-      "process": ""
+      "process": "",
+      "safe_to_close": true
     },
     {
       "id": "calculator",
+      "category": "utility",
       "aliases": [
         "calculator",
         "calc",
@@ -150,10 +162,12 @@
       "type": "exe",
       "target": "calc.exe",
       "args": [],
-      "process": "CalculatorApp.exe"
+      "process": "CalculatorApp.exe",
+      "safe_to_close": true
     },
     {
       "id": "notepad",
+      "category": "utility",
       "aliases": [
         "notepad",
         "notes",
@@ -166,10 +180,12 @@
       "type": "exe",
       "target": "notepad.exe",
       "args": [],
-      "process": "notepad.exe"
+      "process": "notepad.exe",
+      "safe_to_close": true
     },
     {
       "id": "task_manager",
+      "category": "utility",
       "aliases": [
         "task manager",
         "open task manager",
@@ -182,11 +198,13 @@
       "type": "exe",
       "target": "taskmgr.exe",
       "args": [],
-      "process": "Taskmgr.exe"
+      "process": "Taskmgr.exe",
+      "safe_to_close": true
     },
 
     {
       "id": "vscode",
+      "category": "dev",
       "aliases": [
         "vscode",
         "vs code",
@@ -204,6 +222,7 @@
     },
     {
       "id": "steam",
+      "category": "entertainment",
       "aliases": [
         "steam",
         "steam app",
@@ -219,6 +238,7 @@
     },
     {
       "id": "youtube",
+      "category": "entertainment",
       "aliases": [
         "youtube",
         "you tube",
@@ -248,6 +268,7 @@
     },
     {
       "id": "gpt",
+      "category": "utility",
       "aliases": [
         "gpt",
         "g p t",
@@ -278,6 +299,7 @@
     },
     {
       "id": "whatsapp_web",
+      "category": "social",
       "aliases": [
         "whatsapp",
         "whats app",
