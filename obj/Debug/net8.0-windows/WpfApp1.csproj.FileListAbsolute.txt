@@ -189,3 +189,4 @@ C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\W
 C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\__pycache__\voice_auth.cpython-39.pyc
 C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\__pycache__\__init__.cpython-311.pyc
 C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\__pycache__\__init__.cpython-39.pyc
+C:\Users\yedil\OneDrive\Рабочий стол\Aidy-new_settings_02\Aidy-main\WpfApp1\bin\Debug\net8.0-windows\PythonCore\aidy\debug_logger.py

@@ -96,6 +96,11 @@ namespace WpfApp1.Views
                     Label = "Open Website", Icon = "\U0001F310",
                     Children = new List<MenuNode>
                     {
+                        new() { Label = "YouTube",   Icon = "\u25B6",      ActionType = "open_app", Target = "youtube" },
+                        new() { Label = "ChatGPT",   Icon = "\U0001F916",  ActionType = "open_app", Target = "gpt" },
+                        new() { Label = "WhatsApp",  Icon = "\U0001F4AC",  ActionType = "open_app", Target = "whatsapp_web" },
+                        new() { Label = "Gemini",    Icon = "\u2728",      ActionType = "open_app", Target = "gemini" },
+                        new() { Label = "Stepik",    Icon = "\U0001F393",  ActionType = "open_app", Target = "stepik" },
                         new() { Label = "Custom URL...", Icon = "\u270E",
                                 ActionType = "_custom_url_", Target = "" },
                     }
@@ -165,9 +170,6 @@ namespace WpfApp1.Views
             ("Task Manager",    "\u2699\uFE0F", "task_manager"),
             ("VS Code",         "\U0001F4BB", "vscode"),
             ("Steam",           "\U0001F3AE", "steam"),
-            ("YouTube",         "\u25B6",  "youtube"),
-            ("ChatGPT",         "\U0001F916", "gpt"),
-            ("WhatsApp",        "\U0001F4AC", "whatsapp_web"),
         };
 
         // ── Panel building ─────────────────────────────────────────────────────
@@ -443,9 +445,11 @@ namespace WpfApp1.Views
             if (string.IsNullOrWhiteSpace(url) || url == "https://")
                 return;
 
-            // Auto-prepend https:// if no scheme
+            // Auto-prepend https:// if no scheme (but respect file:// and other schemes)
             if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("file://", StringComparison.OrdinalIgnoreCase) &&
+                !Uri.TryCreate(url, UriKind.Absolute, out var testUri))
             {
                 url = "https://" + url;
             }

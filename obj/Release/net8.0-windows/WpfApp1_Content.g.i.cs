@@ -165,6 +165,7 @@
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("assets/voice/wake_04.mp3")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("assets/voice/wake_04.wav")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("assets/voice/wake_fast.wav")]
+[assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("assets/voice/warmup_silence.wav")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("assets/splashoverlay.mp4")]
 
 

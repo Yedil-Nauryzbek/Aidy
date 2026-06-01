@@ -333,6 +333,58 @@
         "firefox.exe",
         "brave.exe"
       ]
+    },
+    {
+      "id": "gemini",
+      "category": "utility",
+      "aliases": [
+        "gemini",
+        "gem ini",
+        "gemeni",
+        "jemini",
+        "jem ini",
+        "geminy",
+        "google gemini",
+        "open gemini"
+      ],
+      "type": "url",
+      "target": "https://gemini.google.com",
+      "args": [],
+      "process": "",
+      "browser_processes": [
+        "opera.exe",
+        "msedge.exe",
+        "chrome.exe",
+        "browser.exe",
+        "firefox.exe",
+        "brave.exe"
+      ]
+    },
+    {
+      "id": "stepik",
+      "category": "education",
+      "aliases": [
+        "stepik",
+        "step ik",
+        "stepic",
+        "step ic",
+        "steppik",
+        "step pick",
+        "stepek",
+        "open stepik"
+      ],
+      "type": "url",
+      "target": "https://stepik.org",
+      "args": [],
+      "process": "",
+      "browser_processes": [
+        "opera.exe",
+        "msedge.exe",
+        "chrome.exe",
+        "browser.exe",
+        "firefox.exe",
+        "brave.exe"
+      ]
     }
   ]
 }

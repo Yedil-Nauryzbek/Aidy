@@ -13,6 +13,57 @@ import queue
 import wave
 import glob as _glob_mod
 from collections import deque
+
+# ── File-based debug log (bypasses stdout entirely) ───────────────────
+_CM_DEBUG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "custom_mode_debug.log")
+def _cm_dbg(msg: str):
+    try:
+        with open(_CM_DEBUG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
+
+def _nb_stdout(line: str, timeout: float = 0.5):
+    """Non-blocking stdout print — fires a daemon thread so the caller never deadlocks."""
+    def _do():
+        try:
+            print(line, flush=True)
+        except Exception:
+            pass
+    t = threading.Thread(target=_do, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+
+def _open_in_browser(url: str):
+    """Open a URL in the default browser — even for file:// paths."""
+    try:
+        import winreg
+        # Find default browser from Windows registry
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice",
+        )
+        prog_id = winreg.QueryValueEx(key, "ProgId")[0]
+        winreg.CloseKey(key)
+        key = winreg.OpenKey(
+            winreg.HKEY_CLASSES_ROOT,
+            f"{prog_id}\\shell\\open\\command",
+        )
+        cmd_template = winreg.QueryValueEx(key, "")[0]
+        winreg.CloseKey(key)
+        # cmd_template is like: "C:\...\browser.exe" --flag "%1"
+        # Replace %1 with the URL
+        if "%1" in cmd_template:
+            cmd_line = cmd_template.replace("%1", url)
+        else:
+            cmd_line = cmd_template + ' "' + url + '"'
+        _cm_dbg(f"[BROWSER] launching: {cmd_line}")
+        CREATE_NO_WINDOW = 0x08000000
+        subprocess.Popen(cmd_line, creationflags=CREATE_NO_WINDOW)
+    except Exception as e:
+        _cm_dbg(f"[BROWSER] registry fallback failed: {e}, using webbrowser.open")
+        import webbrowser
+        webbrowser.open(url)
 from ctypes import wintypes
 
 
@@ -29,6 +80,7 @@ except ImportError:
 from .voice_auth import (
     VoiceAuthManager,
     GRANT_GRAMMAR_PHRASES,
+    MAX_VOICE_PROFILES,
     _parse_grant_command,
 )
 
@@ -83,6 +135,7 @@ from .config import (
     CONFIRM_YES,
     CONFIRM_NO,
     DANGEROUS_INTENTS,
+    CLOSE_EVERYTHING_PHRASES,
     REPEAT_PHRASES,
     CLOSE_ACTIVE_PHRASES,
     MUTE_PHRASES,
@@ -91,6 +144,8 @@ from .config import (
     UNDO_ALL_PHRASES,
     LOCAL_MODE_ON_PHRASES,
     LOCAL_MODE_OFF_PHRASES,
+    CUSTOM_MODE_ON_PHRASES,
+    CUSTOM_MODE_OFF_PHRASES,
     WINDOW_SWITCH_GRAMMAR,
     WINDOW_SWITCH_LEFT,
     WINDOW_SWITCH_RIGHT,
@@ -106,7 +161,7 @@ from .config import (
     FOLLOW_MODE_REPEAT_LAST_STEPS,
     MOUSE_COMMAND_PHRASES,
 )
-from .logui import ui_state, ui_command, ui_timer, ui_study_mode, ui_local_mode, debug, info, warn, error, UI_MODE, LOG_LEVEL
+from .logui import ui_state, ui_command, ui_timer, ui_study_mode, ui_custom_mode, debug, info, warn, error, UI_MODE, LOG_LEVEL
 from .voice import Voice
 from .apps import (
     load_apps_config,
@@ -273,8 +328,8 @@ class Aidy:
     WAKE_ACK_GUARD_MS = 12
     WAKE_GREETING_COOLDOWN_S = 0.12
     WAKE_GREETING_MIN_RMS = 1
-    COMMAND_SILENCE_STOP_MS = 200
-    COMMAND_SILENCE_STOP_MS_LEGACY = 250
+    COMMAND_SILENCE_STOP_MS = 100
+    COMMAND_SILENCE_STOP_MS_LEGACY = 125
     FOLLOWUP_SILENCE_STOP_MS = 180
     CONFIRM_SILENCE_STOP_MS = 180
     PTT_PAUSED_TOKEN = "__PTT_PAUSED__"
@@ -1728,10 +1783,10 @@ class Aidy:
     def _sleep_success(self):
         if not self.voice.muted:
             ui_state("SPEAKING")
-            self.voice.play_or_tts("success", "Task finished.")
+            self.voice.play_or_tts("success", "Done.")
             self._deafen_after_speak()
             ui_state("SUCCESS")
-        time.sleep(0.8 if self.voice.muted else 0.18)
+        time.sleep(0.4 if self.voice.muted else 0.08)
 
     def _sleep_error(self):
         # Keep a short visual pause after failures without emitting success audio/state.
@@ -1870,6 +1925,7 @@ class Aidy:
             | set(WINDOW_SWITCH_GRAMMAR)
             | set(REPEAT_PHRASES)
             | set(CLOSE_ACTIVE_PHRASES)
+            | set(CLOSE_EVERYTHING_PHRASES)
             | set(MUTE_PHRASES)
             | set(UNMUTE_PHRASES)
             | set(UNDO_LAST_PHRASES)
@@ -1881,6 +1937,8 @@ class Aidy:
             | set(TIMER_CANCEL_PHRASES)
             | set(LOCAL_MODE_ON_PHRASES)
             | set(LOCAL_MODE_OFF_PHRASES)
+            | set(CUSTOM_MODE_ON_PHRASES)
+            | set(CUSTOM_MODE_OFF_PHRASES)
             | set(STUDY_MODE_STOP_PHRASES)
             | set(STUDY_MODE_STATUS_PHRASES)
             | set(MOUSE_COMMAND_PHRASES)
@@ -1941,7 +1999,7 @@ class Aidy:
             "args": None,
             "status": None,
         }
-        self.context_mgr = ContextManager(ttl_seconds=7.5, min_confidence=0.2, main_confidence=0.4)
+        self.context_mgr = ContextManager(ttl_seconds=7.5, min_confidence=0.4, main_confidence=0.8)
         self.scheduler = TaskScheduler(max_tasks=5, max_delay_seconds=3600)
         self.history = ActionHistory(max_actions=20, chain_gap_seconds=5.0)
         self.follow_up = FollowUpManager(ttl_seconds=8.0)
@@ -2006,6 +2064,8 @@ class Aidy:
         self._enrollment_cancel_requested = False
         self._enrollment_in_progress = False
         self._enrollment_force_overwrite = False
+        self._pending_enrollment_role = "Admin"
+        self._pending_enrollment_label = ""
 
     def start_stream(self):
         if self.stream is not None:
@@ -2195,6 +2255,232 @@ class Aidy:
             self._pending_admin_enrollment = False
             self._enrollment_cancel_requested = True
             return
+        if low == "list_voice_users":
+            self._send_voice_users()
+            return
+        if low.startswith("enroll_user_force:"):
+            # Format: enroll_user_force:<role>:<label>
+            parts = cmd.split(":", 2)
+            role = parts[1].strip() if len(parts) > 1 else "User"
+            label = parts[2].strip() if len(parts) > 2 else ""
+            info(f"[ENROLL] Received enroll_user_force role={role} label={label}")
+            self._pending_enrollment_role = role
+            self._pending_enrollment_label = label
+            self._pending_admin_enrollment = True
+            self._enrollment_force_overwrite = True
+            return
+        if low.startswith("delete_voice_user:"):
+            try:
+                parts = cmd.split(":")
+                user_id = int(parts[1].strip())
+                # Проверяем, есть ли флаг force
+                force = len(parts) > 2 and parts[2].strip().lower() == "force"
+
+                ok, msg = self.voice_auth.delete_user(user_id, force=force)
+                info(f"[VOICE] delete_user id={user_id}: {ok}, {msg}")
+            except Exception as e:
+                info(f"[VOICE] delete_user error: {e}")
+            self._send_voice_users()
+            return
+        if low.startswith("execute_slot:"):
+            payload = cmd.split(":", 1)[1].strip() if ":" in cmd else ""
+            # Debounce: skip if executed recently
+            elapsed = time.time() - self._last_custom_mode_exec_ts
+            if elapsed < self._CUSTOM_MODE_DEBOUNCE_SEC:
+                info(f"[CustomMode] Skipping execute_slot (debounce {elapsed:.1f}s < {self._CUSTOM_MODE_DEBOUNCE_SEC}s): '{payload}'")
+                return
+            info(f"[CustomMode] Received execute_slot command, payload='{payload}'")
+            self._execute_custom_mode_slot(payload)
+            return
+
+    # ------------------------------------------------------------------
+    # Custom mode slot execution
+    # ------------------------------------------------------------------
+
+    _last_custom_mode_exec_ts: float = 0.0
+    _CUSTOM_MODE_DEBOUNCE_SEC: float = 5.0
+
+    def _execute_custom_mode_slot(self, payload: str):
+        """Execute a custom mode slot action.
+
+        payload format: action_type|target|display_name
+        e.g. "open_app|chrome|Chrome" or "function|volume_up_10|Volume +10%"
+        """
+        _cm_dbg(f"[CM-SLOT] called with payload='{payload}'")
+        parts = payload.split("|", 2)
+        if len(parts) < 2:
+            _cm_dbg(f"[CM-SLOT] bad payload (need >=2 parts): '{payload}'")
+            return
+
+        action_type = parts[0].strip().lower()
+        target = parts[1].strip()
+        display = parts[2].strip() if len(parts) > 2 else target
+
+        _cm_dbg(f"[CM-SLOT] executing: type='{action_type}' target='{target}' display='{display}'")
+
+        try:
+            if action_type == "open_app":
+                app = find_app(self.apps, target)
+                if app:
+                    launch_app(app)
+                else:
+                    _cm_dbg(f"[CM-SLOT] app NOT found: '{target}'")
+
+            elif action_type == "close_app":
+                app = find_app(self.apps, target)
+                if app:
+                    close_app(app)
+                else:
+                    _cm_dbg(f"[CM-SLOT] app NOT found for close: '{target}'")
+
+            elif action_type == "function":
+                self._execute_custom_mode_function(target)
+
+            elif action_type == "open_url":
+                _open_in_browser(target)
+                _cm_dbg(f"[CM-SLOT] _open_in_browser('{target}') done")
+
+            else:
+                _cm_dbg(f"[CM-SLOT] unknown action type: '{action_type}'")
+
+        except Exception as e:
+            import traceback
+            _cm_dbg(f"[CM-SLOT] EXCEPTION: {e}\n{traceback.format_exc()}")
+
+    def _execute_custom_mode_function(self, target: str):
+        """Execute a custom mode function target like volume_up_10, timer_5, etc."""
+        t = target.lower().strip()
+        _cm_dbg(f"[CM-FUNC] target='{t}'")
+        _nb_stdout("STATE:EXECUTING")
+
+        try:
+            if t == "close_everything":
+                _cm_dbg("[CM-FUNC] close_everything — closing all apps except AIDY, OBS, VS")
+                self._close_everything_except_protected()
+                _cm_dbg("[CM-FUNC] close_everything — done")
+            elif t == "shutdown_computer":
+                _cm_dbg("[CM-FUNC] shutdown_computer")
+                os.system("shutdown /s /t 5")
+            elif t == "restart_computer":
+                _cm_dbg("[CM-FUNC] restart_computer")
+                os.system("shutdown /r /t 5")
+            elif t.startswith("volume_up_"):
+                pct = parse_first_int(t) or 10
+                _cm_dbg(f"[CM-FUNC] volume_up {pct}%")
+                volume_steps(up=True, steps=pct)
+            elif t.startswith("volume_down_"):
+                pct = parse_first_int(t) or 10
+                _cm_dbg(f"[CM-FUNC] volume_down {pct}%")
+                volume_steps(up=False, steps=pct)
+            elif t.startswith("brightness_up_"):
+                pct = parse_first_int(t) or 10
+                _cm_dbg(f"[CM-FUNC] brightness_up {pct}%")
+                brightness_steps(up=True, steps=pct)
+            elif t.startswith("brightness_down_"):
+                pct = parse_first_int(t) or 10
+                _cm_dbg(f"[CM-FUNC] brightness_down {pct}%")
+                brightness_steps(up=False, steps=pct)
+            elif t.startswith("timer_"):
+                mins = parse_first_int(t) or 5
+                _cm_dbg(f"[CM-FUNC] timer {mins} min")
+                self._start_timer(mins * 60)
+            elif t.startswith("website_"):
+                site = t[len("website_"):]
+                urls = {
+                    "whatsapp": "https://web.whatsapp.com",
+                    "chatgpt": "https://chatgpt.com",
+                    "youtube": "https://youtube.com",
+                    "gemini": "https://gemini.google.com",
+                    "stepik": "https://stepik.org",
+                }
+                url = urls.get(site, f"https://{site}")
+                _cm_dbg(f"[CM-FUNC] website '{url}'")
+                _open_in_browser(url)
+                _cm_dbg(f"[CM-FUNC] _open_in_browser('{url}') done")
+            else:
+                _cm_dbg(f"[CM-FUNC] unknown function target: '{t}'")
+                _nb_stdout("STATE:IDLE")
+                return
+
+            _cm_dbg(f"[CM-FUNC] '{t}' executed OK")
+            _nb_stdout("STATE:SUCCESS")
+            time.sleep(0.3)
+            _nb_stdout("STATE:IDLE")
+
+        except Exception as e:
+            import traceback
+            _cm_dbg(f"[CM-FUNC] EXCEPTION: {e}\n{traceback.format_exc()}")
+            _nb_stdout("STATE:ERROR")
+            time.sleep(0.5)
+            _nb_stdout("STATE:IDLE")
+
+    # Process names (lowercase) that "close everything" must never kill.
+    _CLOSE_EVERYTHING_PROTECTED = {
+        "wpfapp1.exe",          # AIDY itself
+        "obs64.exe",            # OBS Studio
+        "obs32.exe",            # OBS Studio (32-bit)
+        "devenv.exe",           # Visual Studio
+    }
+
+    def _close_everything_except_protected(self):
+        """Close all visible application windows except AIDY, OBS Studio, and Visual Studio."""
+        windows = self._enum_visible_real_windows()
+        pid_cache: dict[int, str] = {}
+        my_pid = os.getpid()
+        closed = 0
+
+        for win in windows:
+            hwnd = int(win.get("hwnd") or 0)
+            pid = int(win.get("pid") or 0)
+            if pid <= 0 or hwnd <= 0:
+                continue
+            # Never close our own process
+            if pid == my_pid:
+                continue
+            if pid not in pid_cache:
+                pid_cache[pid] = self._process_name_by_pid(pid)
+            proc_name = pid_cache.get(pid) or ""
+            if proc_name in self._CLOSE_EVERYTHING_PROTECTED:
+                _cm_dbg(f"[CLOSE_ALL] skip protected: pid={pid} proc={proc_name}")
+                continue
+            _cm_dbg(f"[CLOSE_ALL] closing hwnd={hwnd} pid={pid} proc={proc_name} title='{win.get('title','')}'")
+            try:
+                _USER32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+                closed += 1
+            except Exception as exc:
+                _cm_dbg(f"[CLOSE_ALL] PostMessageW failed: {exc}")
+
+        _cm_dbg(f"[CLOSE_ALL] sent WM_CLOSE to {closed} window(s)")
+
+    def _execute_all_custom_mode_slots(self):
+        """Read config.json and execute all non-empty custom mode slots."""
+        self._last_custom_mode_exec_ts = time.time()
+        import json as _json
+        config_path = os.path.join(self.base_dir, "config.json")
+        _cm_dbg(f"[CM-ALL] config_path={config_path}, exists={os.path.exists(config_path)}")
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = _json.load(f)
+            cm = cfg.get("custom_mode", {})
+            slots = cm.get("slots", [])
+            _cm_dbg(f"[CM-ALL] found {len(slots)} slot(s), cm={cm}")
+            executed = 0
+            for i, slot in enumerate(slots):
+                action_type = (slot.get("action_type") or "").strip()
+                target = (slot.get("target") or "").strip()
+                display = (slot.get("display_name") or "").strip()
+                if not target:
+                    _cm_dbg(f"[CM-ALL] slot {i} empty, skip")
+                    continue
+                payload = f"{action_type}|{target}|{display}"
+                _cm_dbg(f"[CM-ALL] slot {i} executing: {payload}")
+                self._execute_custom_mode_slot(payload)
+                _cm_dbg(f"[CM-ALL] slot {i} done")
+                executed += 1
+            _cm_dbg(f"[CM-ALL] executed {executed} slot(s)")
+        except Exception as e:
+            import traceback
+            _cm_dbg(f"[CM-ALL] EXCEPTION: {e}\n{traceback.format_exc()}")
 
     def _drain_control_commands(self, max_items: int = 24):
         for _ in range(max(1, int(max_items))):
@@ -2704,8 +2990,8 @@ class Aidy:
         non_action_hits = 0
         for attempt in range(max(1, int(max_attempts))):
             cmd_text = self.listen_command_vosk(
-                max_seconds=(3 if attempt == 0 else 2),
-                min_listen_ms=(300 if attempt == 0 else 250),
+                max_seconds=(1.5 if attempt == 0 else 1),
+                min_listen_ms=(150 if attempt == 0 else 125),
                 ui_state_label="COMMAND_LISTENING",
                 use_grammar=True,
                 speak_on_empty=False,
@@ -2713,8 +2999,8 @@ class Aidy:
             if not cmd_text:
                 self._cmd_log("post-wake grammar empty -> retry free-form")
                 cmd_text = self.listen_command_vosk(
-                    max_seconds=(2.5 if attempt == 0 else 1.5),
-                    min_listen_ms=(250 if attempt == 0 else 200),
+                    max_seconds=(1.25 if attempt == 0 else 0.75),
+                    min_listen_ms=(125 if attempt == 0 else 100),
                     ui_state_label="COMMAND_LISTENING",
                     use_grammar=False,
                     speak_on_empty=False,
@@ -3052,7 +3338,7 @@ class Aidy:
             return None, {}
         intent = (result.get("intent") or "").strip().lower()
         confidence = float(result.get("confidence", 0) or 0)
-        if confidence < 0.4:
+        if confidence < 0.8:
             return None, {}
 
         if intent == "open app":
@@ -3314,9 +3600,13 @@ class Aidy:
             return True
         if t in CLOSE_ACTIVE_PHRASES:
             return True
+        if t in CLOSE_EVERYTHING_PHRASES:
+            return True
         if t in TIMER_START_PHRASES or t in TIMER_CANCEL_PHRASES:
             return True
         if t in LOCAL_MODE_ON_PHRASES or t in LOCAL_MODE_OFF_PHRASES:
+            return True
+        if t in CUSTOM_MODE_ON_PHRASES or t in CUSTOM_MODE_OFF_PHRASES:
             return True
         if t in STUDY_MODE_START_PHRASES or t in STUDY_MODE_START_ALIASES or t in STUDY_MODE_STOP_PHRASES or t in STUDY_MODE_STATUS_PHRASES:
             return True
@@ -3704,8 +3994,8 @@ class Aidy:
             if p:
                 grammar.add(p)
         reply = self.listen_command_vosk(
-            max_seconds=6,
-            min_listen_ms=500,
+            max_seconds=1.5,
+            min_listen_ms=100,
             ui_state_label="CONFIRM",
             use_grammar=True,
             speak_on_empty=False,
@@ -3715,8 +4005,8 @@ class Aidy:
             return reply
         self._cmd_log("confirm grammar empty -> retry free-form")
         return self.listen_command_vosk(
-            max_seconds=5,
-            min_listen_ms=420,
+            max_seconds=1.2,
+            min_listen_ms=80,
             ui_state_label="CONFIRM",
             use_grammar=False,
             speak_on_empty=False,
@@ -3979,7 +4269,7 @@ class Aidy:
                 app = find_app(self.apps, app_id)
                 if not app:
                     return False
-                if (app.get("type") or "").strip().lower() != "url":
+                if (app.get("type") or "").strip().lower() != "url" and not app.get("safe_to_close"):
                     if not self._confirm_close_request():
                         return False
                 ui_state("SPEAKING")
@@ -4083,6 +4373,7 @@ class Aidy:
             text = normalized_text
 
         t0 = " ".join((text or "").strip().lower().split())
+        _cm_dbg(f"[DEBUG-CM] process_command: t0='{t0}', in CUSTOM_ON={t0 in CUSTOM_MODE_ON_PHRASES}, in LOCAL_ON={t0 in LOCAL_MODE_ON_PHRASES}")
         pending = self.follow_up.get_pending()
         pending_active = pending is not None
         pending_type = pending.pending_type if pending else None
@@ -4213,7 +4504,9 @@ class Aidy:
             ui_state("IDLE")
             return False
 
-        if self._is_non_action_utterance(t0):
+        _non_action = self._is_non_action_utterance(t0)
+        _cm_dbg(f"[DEBUG-CM] _is_non_action_utterance('{t0}') = {_non_action}")
+        if _non_action:
             self._cmd_log(f"ignore non-action command='{t0}'")
             ui_state("IDLE")
             return False
@@ -4260,24 +4553,27 @@ class Aidy:
             self._record_action("mute", {})
             return True
 
-        if t0 in LOCAL_MODE_ON_PHRASES:
-            ui_local_mode(True)
-            ui_state("SPEAKING")
-            self.voice.play_or_tts("local_mode_on", "Local mode enabled.")
-            self._deafen_after_speak()
-            ui_state("SUCCESS")
-            self._sleep_success()
-            ui_state("IDLE")
+        if t0 in LOCAL_MODE_ON_PHRASES or t0 in CUSTOM_MODE_ON_PHRASES:
+            _cm_dbg(f"[CM-EXEC] matched ON phrase: '{t0}', executing slots directly")
+            # Use non-blocking stdout to avoid pipe deadlock
+            _nb_stdout("STATE:EXECUTING")
+            _cm_dbg("[CM-EXEC] calling _execute_all_custom_mode_slots()")
+            self._execute_all_custom_mode_slots()
+            _cm_dbg("[CM-EXEC] _execute_all_custom_mode_slots() done")
+            _nb_stdout("STATE:SUCCESS")
+            time.sleep(0.3)
+            _nb_stdout("STATE:IDLE")
+            _cm_dbg("[CM-EXEC] handler complete, returning True")
             return True
 
-        if t0 in LOCAL_MODE_OFF_PHRASES:
-            ui_local_mode(False)
-            ui_state("SPEAKING")
-            self.voice.play_or_tts("local_mode_off", "Local mode disabled.")
+        if t0 in LOCAL_MODE_OFF_PHRASES or t0 in CUSTOM_MODE_OFF_PHRASES:
+            _cm_dbg(f"[CM-EXEC] matched OFF phrase: '{t0}'")
+            _nb_stdout("STATE:SPEAKING")
+            self.voice.play_or_tts("custom_mode_off", "Custom mode disabled.")
             self._deafen_after_speak()
-            ui_state("SUCCESS")
-            self._sleep_success()
-            ui_state("IDLE")
+            _nb_stdout("STATE:SUCCESS")
+            time.sleep(0.3)
+            _nb_stdout("STATE:IDLE")
             return True
 
         if t0 in UNDO_ALL_PHRASES:
@@ -4405,6 +4701,21 @@ class Aidy:
             ui_state("IDLE")
             return False
 
+        if t0 in CLOSE_EVERYTHING_PHRASES:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("close_everything", "Closing everything")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            self._set_last_command(text)
+            self._close_everything_except_protected()
+            self._set_memory("close everything", {})
+            self._set_context("close everything", {})
+            self._record_action("close everything", {})
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
+
         if t0.startswith(("close ", "quit ", "exit ", "kill ", "stop ")):
             app_name = extract_close_app_name(t0)
             app = find_app(self.apps, app_name)
@@ -4417,7 +4728,7 @@ class Aidy:
                 self.history.break_chain()
                 return False
 
-            if (app.get("type") or "").strip().lower() != "url":
+            if (app.get("type") or "").strip().lower() != "url" and not app.get("safe_to_close"):
                 if not self._confirm_close_request():
                     return False
 
@@ -4642,7 +4953,7 @@ class Aidy:
 
         info(f"Intent: {intent}  conf={confidence:.2f}")
 
-        if confidence < 0.4:
+        if confidence < 0.8:
             if confidence >= self.context_mgr.min_confidence and self._is_followup_phrase(text):
                 ctx = self.context_mgr.get_context()
                 if ctx and self._apply_followup(ctx, text, intent):
@@ -4765,7 +5076,7 @@ class Aidy:
                 self.history.break_chain()
                 return False
 
-            if (app.get("type") or "").strip().lower() != "url":
+            if (app.get("type") or "").strip().lower() != "url" and not app.get("safe_to_close"):
                 if not self._confirm_close_request():
                     return False
 
@@ -4793,6 +5104,21 @@ class Aidy:
                 ui_state("IDLE")
                 self.history.break_chain()
                 return False
+
+        if intent == "close everything" or intent in CLOSE_EVERYTHING_PHRASES:
+            ui_state("SPEAKING")
+            self.voice.play_or_tts("close_everything", "Closing everything")
+            self._deafen_after_speak()
+            ui_state("EXECUTING")
+            self._set_last_command(text)
+            self._close_everything_except_protected()
+            self._set_memory("close everything", {})
+            self._set_context("close everything", {})
+            self._record_action("close everything", {})
+            ui_state("SUCCESS")
+            self._sleep_success()
+            ui_state("IDLE")
+            return True
 
         if intent in COMMANDS:
             if intent in DANGEROUS_INTENTS:
@@ -4861,6 +5187,20 @@ class Aidy:
         "adi", "ady", "aidi", "eidy", "edi",
     }
 
+    def _send_voice_users(self):
+        """Send the current list of enrolled voice users to the C# UI."""
+        try:
+            users = self.voice_auth.list_users()
+            if not users:
+                print("CONTROL:voice_users:", flush=True)
+                return
+            entries = []
+            for u in users:
+                entries.append(f"{u['id']}|{u['label']}|{u['role']}|{u['expires']}")
+            print(f"CONTROL:voice_users:{';'.join(entries)}", flush=True)
+        except Exception as e:
+            info(f"[VOICE] _send_voice_users error: {e}")
+
     def _enrollment_phrase_match(self, phrase: str, result: str) -> bool:
         p = phrase.lower().strip()
         r = result.lower().strip()
@@ -4879,13 +5219,35 @@ class Aidy:
         return p in r or r in p
 
     def _run_admin_enrollment(self) -> None:
-        """Interactive Admin voice enrollment flow triggered by the UI 'Enroll Voice' button."""
+        """Interactive voice enrollment flow triggered by the UI 'Enroll Voice' button.
+
+        Uses self._pending_enrollment_role and self._pending_enrollment_label
+        to determine the role and label for the new profile (defaults to Admin).
+        """
+        role = getattr(self, "_pending_enrollment_role", "Admin") or "Admin"
+        label = getattr(self, "_pending_enrollment_label", "") or ""
+        # Reset for next enrollment
+        self._pending_enrollment_role = "Admin"
+        self._pending_enrollment_label = ""
+
         try:
             self._drain_control_commands()
             self._enrollment_cancel_requested = False
             self._enrollment_in_progress = True
 
             print("EVENT:ENROLL_STARTED", flush=True)
+
+            # Enforce max profiles limit
+            current_count = self.voice_auth.user_count()
+            if current_count >= MAX_VOICE_PROFILES:
+                print(f"CONTROL:enroll_text:Max {MAX_VOICE_PROFILES} profiles reached.|", flush=True)
+                self.voice.tts_fire_and_forget(
+                    f"Maximum of {MAX_VOICE_PROFILES} voice profiles reached. "
+                    "Please delete an existing profile first."
+                )
+                time.sleep(2.0)
+                print("EVENT:ENROLLMENT_FINISHED", flush=True)
+                return
 
             enroll_dir = os.path.join(self.base_dir, "VoiceProfiles")
             os.makedirs(enroll_dir, exist_ok=True)
@@ -4901,14 +5263,12 @@ class Aidy:
             from .voice_auth import _estimate_snr_db, MIN_ENROLLMENT_SNR_DB, MIN_ENROLLMENT_SNR_DB_DEGRADED
 
             # 4 phonetically balanced phrases for a richer biometric embedding.
-            # These prompts elicit natural speech; we use FREE-FORM recognition
-            # (no grammar) so Vosk can detect ANY speech — we only need audio, not
-            # an exact transcript match.
             phrases_to_say = [
                 "my name is admin",
                 "hey aidy open the browser please",
                 "set a timer for five minutes",
                 "she had your dark suit in greasy wash water all year",
+                "open calculator",
             ]
             total = len(phrases_to_say)
             audio_segments: list[bytes] = []
@@ -4987,7 +5347,8 @@ class Aidy:
 
             print("CONTROL:enroll_text:Saving voice...|Processing", flush=True)
             timestamp = int(time.time())
-            filepath = os.path.join(enroll_dir, f"Admin_Voice_{timestamp}.wav")
+            enroll_label = label if label else f"{role}_{timestamp}"
+            filepath = os.path.join(enroll_dir, f"{role}_Voice_{timestamp}.wav")
             # Save concatenated audio as backup WAV
             combined_audio = b"".join(audio_segments)
             try:
@@ -4999,10 +5360,9 @@ class Aidy:
             except Exception as e:
                 info(f"[ENROLL] WAV save error: {e}")
 
-            label = f"Admin_{timestamp}"
             print("CONTROL:enroll_text:Analyzing voice...|Processing", flush=True)
             try:
-                ok, msg = self.voice_auth.enroll(audio_segments, role="Admin", label=label)
+                ok, msg = self.voice_auth.enroll(audio_segments, role=role, label=enroll_label)
                 info(f"[ENROLL] result: ok={ok}, msg={msg}")
             except Exception as e:
                 info(f"[ENROLL] enroll error: {e}")
@@ -5017,6 +5377,7 @@ class Aidy:
 
             time.sleep(2.0)
             print("EVENT:ENROLLMENT_FINISHED", flush=True)
+            self._send_voice_users()
 
         except Exception as e:
             info(f"[ENROLL] critical error: {e}")
@@ -5076,15 +5437,20 @@ class Aidy:
         )
         if not allowed:
             info(f"[RBAC] blocked role='{role_label}' intent='{intent_key}'")
-            ui_state("SPEAKING")
-            self.voice.tts_blocking(reason or "Access denied.")
-            self._deafen_after_speak()
+            
+            # 1. ОБЯЗАТЕЛЬНО С ПОДЧЕРКИВАНИЕМ, иначе C# не поймет!
+            ui_state("ACCESS_DENIED") 
+            
+            # 2. Ждем 1.5 секунды, чтобы пользователь успел увидеть красный крест
+            time.sleep(1.5)
+            
+            # 3. Возвращаем кольцо в спокойный режим ожидания
             ui_state("IDLE")
             return False
 
         info(f"[RBAC] allowed role='{role_label}' sim OK intent='{intent_key}'")
         return True
-
+        
     def _voice_auth_grant(self, text: str, precomputed_emb=None):
         """Detect and handle grant-access / revoke / list-users voice commands.
 
@@ -5162,6 +5528,63 @@ class Aidy:
     # ── Original safe-process (now with RBAC gate) ─────────────────────────
 
     def _safe_process_command(self, text: str) -> bool:
+        # ── Custom mode: bypass RBAC entirely (utility commands) ─────────
+        t_check = " ".join((text or "").strip().lower().split())
+        _cm_dbg(f"[DEBUG-CM] _safe_process_command entered, t_check='{t_check}'")
+        _cm_dbg(f"[DEBUG-CM] in CUSTOM_MODE_ON_PHRASES={t_check in CUSTOM_MODE_ON_PHRASES}, in CUSTOM_MODE_OFF_PHRASES={t_check in CUSTOM_MODE_OFF_PHRASES}")
+        if t_check in CUSTOM_MODE_ON_PHRASES:
+            _cm_dbg(f"[DEBUG-CM] MATCH ON! executing slots directly (no process_command)")
+            try:
+                _nb_stdout("STATE:EXECUTING")
+                self._execute_all_custom_mode_slots()
+                _cm_dbg("[DEBUG-CM] slots executed, sending SUCCESS")
+                _nb_stdout("STATE:SUCCESS")
+                time.sleep(0.3)
+                _nb_stdout("STATE:IDLE")
+                return True
+            except Exception as e:
+                import traceback
+                _cm_dbg(f"[DEBUG-CM] EXCEPTION: {e}\n{traceback.format_exc()}")
+                _nb_stdout("STATE:IDLE")
+                return False
+            finally:
+                self._reset_recognition_after_command()
+
+        if t_check in CUSTOM_MODE_OFF_PHRASES:
+            _cm_dbg(f"[DEBUG-CM] MATCH OFF! disabling custom mode")
+            try:
+                _nb_stdout("STATE:SPEAKING")
+                self.voice.play_or_tts("custom_mode_off", "Custom mode disabled.")
+                self._deafen_after_speak()
+                _nb_stdout("STATE:SUCCESS")
+                time.sleep(0.3)
+                _nb_stdout("STATE:IDLE")
+                return True
+            except Exception as e:
+                import traceback
+                _cm_dbg(f"[DEBUG-CM] OFF EXCEPTION: {e}\n{traceback.format_exc()}")
+                _nb_stdout("STATE:IDLE")
+                return False
+            finally:
+                self._reset_recognition_after_command()
+        _cm_dbg(f"[DEBUG-CM] no custom mode match, continuing to RBAC path")
+
+        # ── "close everything" bypasses voice auth (no RBAC needed) ──────
+        if t_check in CLOSE_EVERYTHING_PHRASES:
+            try:
+                return self.process_command(text)
+            except Exception as e:
+                ui_state("ERROR")
+                error(f"Command failed: {e}")
+                if not self.voice.muted:
+                    self.voice.play_or_tts("exec_error", "Sorry, something went wrong")
+                    self._deafen_after_speak()
+                ui_state("IDLE")
+                self.history.break_chain()
+                return False
+            finally:
+                self._reset_recognition_after_command()
+
         # ── Voice ID disabled: bypass all RBAC and execute directly ──────
         if not self.voice_id_enabled:
             try:
@@ -5223,6 +5646,8 @@ class Aidy:
             self._reset_recognition_after_command()
 
     def run(self):
+        _cm_dbg(f"===== AIDY STARTED (custom_mode debug active) base_dir={self.base_dir} =====")
+        _cm_dbg(f"CUSTOM_MODE_ON_PHRASES = {CUSTOM_MODE_ON_PHRASES}")
         info("AIDY start")
         info(f"Mode: {'UI bridge' if UI_MODE else 'Console'} | log={LOG_LEVEL}")
         info(f"API: {API_URL}")
@@ -5277,7 +5702,10 @@ class Aidy:
                     continue
 
                 if self.window_switch_active:
-                    cmd_text = self.listen_command_vosk(max_seconds=3)
+                    cmd_text = self.listen_command_vosk(
+                        max_seconds=3,
+                        grammar_phrases=list(WINDOW_SWITCH_GRAMMAR),
+                    )
                     if cmd_text:
                         self.window_switch_silence_hits = 0
                         self._safe_process_command(cmd_text)
@@ -5292,14 +5720,35 @@ class Aidy:
                     self._handle_due_tasks()
                     is_rephrase = pending.pending_type == PENDING_NEED_TARGET
                     is_timer_pending = pending.pending_type == PENDING_NEED_TIMER_DURATION
-                    cmd_text = self.listen_command_vosk(
-                        max_seconds=(10 if is_timer_pending else (12 if is_rephrase else 8)),
-                        min_listen_ms=(600 if is_timer_pending else 800),
-                        ui_state_label=("LISTENING" if is_rephrase else "FOLLOWUP"),
-                        use_grammar=(pending.pending_type not in (PENDING_NEED_TIMER_DURATION, PENDING_NEED_TARGET)),
-                    )
+                    is_numeric_pending = pending.pending_type == PENDING_NEED_STEPS
+                    if is_numeric_pending:
+                        # Narrow grammar + short timing for a quick number response
+                        cmd_text = self.listen_command_vosk(
+                            max_seconds=4,
+                            min_listen_ms=400,
+                            ui_state_label="FOLLOWUP",
+                            use_grammar=True,
+                            grammar_phrases=list(NUMERIC_FOLLOWUP_GRAMMAR_PHRASES),
+                        )
+                    else:
+                        cmd_text = self.listen_command_vosk(
+                            max_seconds=(10 if is_timer_pending else (12 if is_rephrase else 8)),
+                            min_listen_ms=(600 if is_timer_pending else 800),
+                            ui_state_label=("LISTENING" if is_rephrase else "FOLLOWUP"),
+                            use_grammar=(pending.pending_type not in (PENDING_NEED_TIMER_DURATION, PENDING_NEED_TARGET)),
+                        )
                     if cmd_text:
-                        self._safe_process_command(cmd_text)
+                        if is_numeric_pending:
+                            # Bypass RBAC — the original command was already authorised
+                            try:
+                                self.process_command(cmd_text)
+                            except Exception as e:
+                                error(f"Numeric follow-up failed: {e}")
+                                ui_state("IDLE")
+                            finally:
+                                self._reset_recognition_after_command()
+                        else:
+                            self._safe_process_command(cmd_text)
                     else:
                         if is_timer_pending:
                             attempts = self.follow_up.register_invalid_attempt()
@@ -5363,10 +5812,13 @@ class Aidy:
                     ui_state("IDLE")
                     continue
                 if wake_tail:
+                    _cm_dbg(f"[DEBUG-CM] wake_tail received: '{wake_tail}'")
                     if self._is_non_action_utterance(wake_tail):
+                        _cm_dbg(f"[DEBUG-CM] wake_tail REJECTED by _is_non_action_utterance: '{wake_tail}'")
                         self._cmd_log(f"wake tail ignored non-action='{wake_tail}'")
                         ui_state("IDLE")
                         continue
+                    _cm_dbg(f"[DEBUG-CM] wake_tail ACCEPTED, calling _safe_process_command: '{wake_tail}'")
                     self._cmd_log(f"wake tail='{wake_tail}'")
                     self._safe_process_command(wake_tail)
                     continue
@@ -5376,11 +5828,13 @@ class Aidy:
                     continue
 
                 cmd_text = self._listen_post_wake_command(max_attempts=2)
+                _cm_dbg(f"[DEBUG-CM] post-wake cmd_text: '{cmd_text}'")
                 if cmd_text == "__SKIP_WAKE_COMMAND__":
                     self._cmd_log("post-wake aborted; back to wake mode")
                     ui_state("IDLE")
                     continue
                 if cmd_text:
+                    _cm_dbg(f"[DEBUG-CM] post-wake ACCEPTED, calling _safe_process_command: '{cmd_text}'")
                     self._safe_process_command(cmd_text)
                 else:
                     self._cmd_log("post-wake empty; back to wake mode")

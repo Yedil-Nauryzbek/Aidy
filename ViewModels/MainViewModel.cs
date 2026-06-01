@@ -718,13 +718,14 @@ namespace WpfApp1.ViewModels
             foreach (var entry in entries)
             {
                 var parts = entry.Split('|');
-                if (parts.Length >= 3)
+                if (parts.Length >= 4 && int.TryParse(parts[0].Trim(), out int id))
                 {
                     VoiceUsers.Add(new VoiceUserEntry
                     {
-                        Label = parts[0].Trim(),
-                        Role = parts[1].Trim(),
-                        Expires = parts[2].Trim(),
+                        Id = id,
+                        Label = parts[1].Trim(),
+                        Role = parts[2].Trim(),
+                        Expires = parts[3].Trim(),
                     });
                 }
             }
@@ -737,6 +738,7 @@ namespace WpfApp1.ViewModels
 
     public class VoiceUserEntry
     {
+        public int Id { get; set; }
         public string Label { get; set; } = "";
         public string Role { get; set; } = "";
         public string Expires { get; set; } = "";

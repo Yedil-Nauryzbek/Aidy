@@ -33,6 +33,10 @@ def ui_local_mode(active: bool):
     if UI_MODE:
         print(f"LOCALMODE:{'on' if active else 'off'}", flush=True)
 
+def ui_custom_mode(active: bool):
+    if UI_MODE:
+        print(f"CUSTOMMODE:{'on' if active else 'off'}", flush=True)
+
 
 LOG_LEVEL = os.environ.get("AIDY_LOG", "INFO").upper()
 LEVELS = {"DEBUG": 10, "INFO": 20, "WARN": 30, "ERROR": 40}

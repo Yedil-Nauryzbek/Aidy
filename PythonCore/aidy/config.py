@@ -118,6 +118,17 @@ WAKE_KEYWORDS = {
     "хэй эйди",
     "привет эйди",
     "эйди слушай",
+    # standalone wake words
+    "assistant",
+    "hi assistant",
+    "computer",
+    "hey computer",
+    "ok computer",
+    "okay computer",
+    "hi computer",
+    "hello computer",
+    "компьютер",
+    "хей компьютер",
 }
 
 WAKE_FUZZY_ALIASES = {
@@ -141,15 +152,19 @@ WAKE_FUZZY_ALIASES = {
     "eady",
     "aide",
     "eidi",
+    "assistant",
+    "computer",
     "эйди",
     "эди",
+    "компьютер",
 }
 
 _STRONG_SINGLE_WAKE = frozenset({
     "aidy", "ady", "adi", "aidi", "aidyy", "eidy", "edy", "edi",
     "aiddy", "eddie", "eighty", "edie", "eadie", "eady", "eightie",
     "eighties", "aide", "eidi", "heady", "eddy", "id",
-    "эйди", "эди",
+    "assistant", "computer",
+    "эйди", "эди", "компьютер",
 })
 _GREETINGS = frozenset({"hey", "hello", "ok", "okay", "hi", "хей", "хэй"})
 # Pre-compute compact (no-space) versions of multi-word wake keywords
@@ -324,6 +339,11 @@ MOUSE_COMMAND_PHRASES = {
     "right click", "right",
 }
 
+CLOSE_EVERYTHING_PHRASES = {
+    "close everything", "close all", "close all apps", "close all applications",
+    "close everything please",
+}
+
 DANGEROUS_INTENTS = {"shutdown", "restart"}
 
 CONFIRM_YES = {
@@ -429,6 +449,59 @@ LOCAL_MODE_OFF_PHRASES = {
     "exit local mode",
 }
 
+CUSTOM_MODE_ON_PHRASES = {
+    "custom mode",
+    "custom mode on",
+    "enable custom mode",
+    "turn on custom mode",
+    "start custom mode",
+    "custom mod",
+    "custom mold",
+    "custom mode please",
+    # synonyms
+    "personal mode",
+    "personal mode on",
+    "enable personal mode",
+    "turn on personal mode",
+    "start personal mode",
+    "local mode",
+    "local mode on",
+    "enable local mode",
+    "turn on local mode",
+    "start local mode",
+    "my mode",
+    "my mode on",
+    "start my mode",
+    "quick mode",
+    "quick mode on",
+    "start quick mode",
+}
+
+CUSTOM_MODE_OFF_PHRASES = {
+    "custom mode off",
+    "disable custom mode",
+    "turn off custom mode",
+    "stop custom mode",
+    "exit custom mode",
+    # synonyms
+    "personal mode off",
+    "disable personal mode",
+    "turn off personal mode",
+    "stop personal mode",
+    "exit personal mode",
+    "local mode off",
+    "disable local mode",
+    "turn off local mode",
+    "stop local mode",
+    "exit local mode",
+    "my mode off",
+    "stop my mode",
+    "exit my mode",
+    "quick mode off",
+    "stop quick mode",
+    "exit quick mode",
+}
+
 UNDO_LAST_PHRASES = {
     "undo",
     "undo last",
@@ -451,7 +524,7 @@ UNDO_ALL_PHRASES = {
 
 WINDOW_SWITCH_LEFT = {"left", "previous", "back"}
 WINDOW_SWITCH_RIGHT = {"right", "next", "forward"}
-WINDOW_SWITCH_DONE = {"done", "select", "choose", "ok"}
+WINDOW_SWITCH_DONE = {"done", "select", "choose", "ok", "finished", "finish", "completed", "okay"}
 WINDOW_SWITCH_CANCEL = {"cancel", "stop", "exit"}
 WINDOW_SWITCH_GRAMMAR = sorted(
     WINDOW_SWITCH_LEFT | WINDOW_SWITCH_RIGHT | WINDOW_SWITCH_DONE | WINDOW_SWITCH_CANCEL

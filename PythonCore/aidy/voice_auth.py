@@ -56,8 +56,8 @@ SAMPLE_RATE = 16000
 # Tuned for hybrid matching (70% max + 30% mean-of-top-3) with SpeechBrain
 # ECAPA-TDNN which produces lower absolute cosine similarities than
 # resemblyzer but with much better speaker discrimination.
-SIMILARITY_HIGH = 0.43     # High confidence — auto-accept, eligible for rolling update
-SIMILARITY_MEDIUM = 0.33   # Medium confidence — accept with warning
+SIMILARITY_HIGH = 0.35     # High confidence — auto-accept, eligible for rolling update
+SIMILARITY_MEDIUM = 0.25   # Medium confidence — logged but NOT accepted for commands
 SIMILARITY_LOW = 0.23      # Below this — reject outright
 
 # Kept for backward compat with any external code referencing the old name.
@@ -69,13 +69,14 @@ MIN_ENROLLMENT_SNR_DB_DEGRADED = 8.0  # fallback for noisy environments (accepte
 MIN_ENROLLMENT_DURATION_MS = 300      # minimum usable audio per phrase
 MAX_EMBEDDINGS_PER_USER = 10      # cap stored embeddings for rolling update
 MIN_MATURE_EMBEDDINGS = 3         # users with fewer embeddings get relaxed (medium) threshold
+MAX_VOICE_PROFILES = 5            # maximum number of enrolled voice profiles
 
 # Rolling update rate limit (seconds) — at most one update per user per interval.
 _ROLLING_UPDATE_INTERVAL = 60.0
 
 # Intents that require Admin role regardless of everything else.
 # User and Guest roles are always blocked from these.
-ADMIN_ONLY_INTENTS: set[str] = {"shutdown", "restart", "close_everything", "grant_access"}
+ADMIN_ONLY_INTENTS: set[str] = {"shutdown", "restart", "grant_access"}
 
 # Intents that "Guest" role IS allowed to run (allow-list).
 # Anything not in this set is blocked for Guest.
@@ -84,6 +85,7 @@ GUEST_ALLOWED_INTENTS: set[str] = {
     "open_app",
     "close_app",
     "close_active",
+    "close_everything",
     "open_browser",
     "timer",
     "cancel_timer",
@@ -738,11 +740,15 @@ class VoiceAuthManager:
         self._init_db()
         if async_encoder_init:
             # Load encoder in background thread to avoid blocking startup
-            threading.Thread(target=self._load_encoder, daemon=True).start()
+            def _async_init():
+                self._load_encoder()
+                self._migrate_embedding_dimensions()
+            threading.Thread(target=_async_init, daemon=True).start()
         else:
             # Load encoder synchronously (moves 28s cold start to init time)
             self._load_encoder()
             self._encoder_ready.set()
+            self._migrate_embedding_dimensions()
 
     # ------------------------------------------------------------------
     # Initialisation
@@ -805,6 +811,9 @@ class VoiceAuthManager:
             try:
                 device = "cuda" if _torch.cuda.is_available() else "cpu"
                 model_dir = os.path.join(self.base_dir, "speechbrain_models", "ecapa")
+                if not os.path.isdir(model_dir):
+                    print(f"[VoiceAuth] SpeechBrain model dir not found: {model_dir}")
+                    raise FileNotFoundError(model_dir)
                 # Load from local directory (pre-downloaded model)
                 self._sb_encoder = _SBEncoder.from_hparams(
                     source=model_dir,
@@ -816,7 +825,9 @@ class VoiceAuthManager:
                 self._warmup_from_file()
                 return
             except Exception as exc:
+                import traceback
                 print(f"[VoiceAuth] SpeechBrain failed ({exc}); trying resemblyzer")
+                traceback.print_exc()
                 self._sb_encoder = None
 
         # Fallback to resemblyzer
@@ -900,6 +911,173 @@ class VoiceAuthManager:
         if migrated:
             conn.commit()
             print(f"[VoiceAuth] Migrated {migrated} legacy embedding(s) to voice_embeddings table")
+
+    def _get_encoder_dim(self) -> Optional[int]:
+        """Return the output dimension of the currently active encoder."""
+        if self._sb_encoder is not None:
+            return 192
+        if self._encoder is not None:
+            return 256
+        return 64  # spectral fallback
+
+    def _migrate_embedding_dimensions(self) -> None:
+        """Re-extract embeddings when the active encoder dimension changed.
+
+        If stored embeddings have a different dimension than the current
+        encoder, attempt to re-extract from saved WAV files in VoiceProfiles/.
+        This handles the case where SpeechBrain (192-dim) was used for
+        enrollment but is unavailable now, leaving only resemblyzer (256-dim).
+        """
+        import wave as _wave_mod
+
+        encoder_dim = self._get_encoder_dim()
+        if encoder_dim is None:
+            return
+
+        conn = self._get_conn()
+        # Sample one stored embedding to check dimension
+        row = conn.execute(
+            "SELECT embedding FROM voice_embeddings LIMIT 1"
+        ).fetchone()
+        if not row:
+            return
+
+        try:
+            stored_dim = len(json.loads(row[0]))
+        except Exception:
+            return
+
+        if stored_dim == encoder_dim:
+            return  # Dimensions match, no migration needed
+
+        print(
+            f"[VoiceAuth] Encoder dimension mismatch: stored={stored_dim}, "
+            f"current={encoder_dim}. Attempting re-extraction from WAV files...",
+            flush=True,
+        )
+
+        profiles_dir = os.path.join(self.base_dir, "VoiceProfiles")
+        if not os.path.isdir(profiles_dir):
+            print("[VoiceAuth] No VoiceProfiles directory — cannot migrate", flush=True)
+            return
+
+        # Build a map of user labels to their WAV files
+        wav_files = sorted(
+            [f for f in os.listdir(profiles_dir) if f.endswith(".wav")],
+            key=lambda f: os.path.getmtime(os.path.join(profiles_dir, f)),
+        )
+        if not wav_files:
+            print("[VoiceAuth] No WAV files found — cannot migrate", flush=True)
+            return
+
+        # Load all users
+        user_rows = conn.execute(
+            "SELECT id, label, role FROM voice_users"
+        ).fetchall()
+        if not user_rows:
+            return
+
+        migrated_users = 0
+        for uid, label, role in user_rows:
+            # Find WAV files for this user by matching the timestamp in the label
+            # Label format: "Admin_1774458848" or "Yasin"
+            # WAV format:   "Admin_Voice_1774458848.wav"
+            user_wavs = []
+            for wf in wav_files:
+                # Extract timestamp from label (last numeric segment)
+                label_parts = label.rsplit("_", 1)
+                if len(label_parts) == 2 and label_parts[1].isdigit():
+                    ts = label_parts[1]
+                    if ts in wf:
+                        user_wavs.append(os.path.join(profiles_dir, wf))
+                else:
+                    # For named users like "Yasin", check if any WAV
+                    # was enrolled around the same created_at time
+                    pass
+
+            if not user_wavs:
+                # Fallback: match by created_at proximity to WAV file mtime
+                created_at = conn.execute(
+                    "SELECT created_at FROM voice_users WHERE id = ?", (uid,)
+                ).fetchone()
+                if created_at:
+                    cat = created_at[0]
+                    best_delta = 5.0  # max 5 seconds tolerance
+                    for wf in wav_files:
+                        wf_path = os.path.join(profiles_dir, wf)
+                        # Extract timestamp from WAV filename
+                        try:
+                            wf_ts = float(wf.rsplit("_", 1)[1].replace(".wav", ""))
+                        except (ValueError, IndexError):
+                            continue
+                        delta = abs(cat - wf_ts)
+                        if delta < best_delta:
+                            best_delta = delta
+                            user_wavs = [wf_path]
+
+            if not user_wavs:
+                print(f"[VoiceAuth] No WAV found for user '{label}' — skipping", flush=True)
+                continue
+
+            # Re-extract embeddings from WAV files.
+            # WAV files contain concatenated enrollment phrases, so we split
+            # them into ~3-second segments to recover multiple embeddings.
+            SEGMENT_BYTES = SAMPLE_RATE * 2 * 3  # 3 seconds of PCM-16
+            new_embeddings = []
+            for wav_path in user_wavs:
+                try:
+                    with _wave_mod.open(wav_path, "rb") as wfr:
+                        pcm_data = wfr.readframes(wfr.getnframes())
+                    if len(pcm_data) < self.MIN_AUDIO_BYTES:
+                        continue
+                    # Split into segments for multi-embedding extraction
+                    segments = []
+                    if len(pcm_data) > SEGMENT_BYTES * 2:
+                        offset = 0
+                        while offset + SEGMENT_BYTES <= len(pcm_data):
+                            segments.append(pcm_data[offset:offset + SEGMENT_BYTES])
+                            offset += SEGMENT_BYTES
+                        # Include remaining tail if long enough
+                        if len(pcm_data) - offset >= self.MIN_AUDIO_BYTES:
+                            segments.append(pcm_data[offset:])
+                    else:
+                        segments = [pcm_data]
+                    for seg in segments:
+                        emb = self.extract_embedding(seg)
+                        if emb is not None and emb.shape[0] == encoder_dim:
+                            new_embeddings.append(emb)
+                except Exception as exc:
+                    print(f"[VoiceAuth] WAV re-extract error ({wav_path}): {exc}", flush=True)
+
+            if not new_embeddings:
+                print(f"[VoiceAuth] No valid embeddings from WAVs for '{label}'", flush=True)
+                continue
+
+            # Cap at MAX_EMBEDDINGS_PER_USER
+            new_embeddings = new_embeddings[:MAX_EMBEDDINGS_PER_USER]
+
+            # Replace old embeddings with new ones
+            with self._db_lock:
+                conn.execute("DELETE FROM voice_embeddings WHERE user_id = ?", (uid,))
+                now = time.time()
+                for emb in new_embeddings:
+                    conn.execute(
+                        "INSERT INTO voice_embeddings (user_id, embedding, created_at) VALUES (?, ?, ?)",
+                        (uid, json.dumps(emb.tolist()), now),
+                    )
+                conn.commit()
+            migrated_users += 1
+            print(
+                f"[VoiceAuth] Re-extracted {len(new_embeddings)} embedding(s) for '{label}' "
+                f"({stored_dim}-dim -> {encoder_dim}-dim)",
+                flush=True,
+            )
+
+        if migrated_users:
+            self._invalidate_cache()
+            print(f"[VoiceAuth] Dimension migration complete: {migrated_users} user(s) updated", flush=True)
+        else:
+            print("[VoiceAuth] Dimension migration: no users could be migrated", flush=True)
 
     # ------------------------------------------------------------------
     # Database helpers
@@ -1060,6 +1238,37 @@ class VoiceAuthManager:
                 "embeddings": n_emb,
             })
         return summary
+
+    def user_count(self) -> int:
+        """Return the number of non-expired enrolled users."""
+        conn = self._get_conn()
+        now = time.time()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM voice_users WHERE expires_at IS NULL OR expires_at > ?",
+            (now,),
+        ).fetchone()
+        return row[0] if row else 0
+
+    def delete_user(self, user_id: int) -> Tuple[bool, str]:
+        """Delete a voice profile by user ID.
+
+        Returns:
+            (success, message)
+        """
+        with self._db_lock:
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT label, role FROM voice_users WHERE id = ?", (user_id,)
+            ).fetchone()
+            if not row:
+                return False, f"User ID {user_id} not found."
+            label, role = row[0], row[1]
+            conn.execute("DELETE FROM voice_embeddings WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM voice_users WHERE id = ?", (user_id,))
+            conn.commit()
+        self._invalidate_cache()
+        print(f"[VoiceAuth] Deleted user '{label}' (id={user_id}, role={role})")
+        return True, f"Deleted '{label}'."
 
     # ------------------------------------------------------------------
     # Embedding extraction
@@ -1410,10 +1619,10 @@ class VoiceAuthManager:
                 best_user_emb_count = len(embeddings)
         comparison_elapsed = (time.time() - comparison_start) * 1000
 
-        # Users with few embeddings (newly granted) get a relaxed threshold
-        # so they can be recognised while the profile builds up via rolling updates.
+        # Only high-confidence matches are accepted for command execution.
+        # Medium confidence is logged but does NOT grant access.
         is_immature = best_user_emb_count < MIN_MATURE_EMBEDDINGS
-        effective_threshold = SIMILARITY_MEDIUM if is_immature else SIMILARITY_HIGH
+        effective_threshold = SIMILARITY_HIGH
 
         # Classify confidence
         if best_sim >= SIMILARITY_HIGH:
@@ -1677,65 +1886,31 @@ class VoiceAuthManager:
         print(f"[VoiceAuth] Granted {role} access to '{label}' ({exp_str}) — {len(embeddings)} embeddings")
         return True
 
-    def delete_user(self, query: str) -> Tuple[bool, str]:
-        """Delete a user by number, label, or partial match.
+    def delete_user(self, user_id: int, force: bool = False) -> Tuple[bool, str]:
+        """Delete a voice profile by user ID. Allows forcing deletion of the last admin."""
+        with self._db_lock:
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT label, role FROM voice_users WHERE id = ?", (user_id,)
+            ).fetchone()
 
-        Accepts:
-            "1"           → match user_1(...)
-            "1 guest"     → match user_1(guest)
-            "user_2(guest)" → exact label match
-            "guest"       → partial match on label
+            if not row:
+                return False, f"User ID {user_id} not found."
 
-        Will not delete the last remaining Admin.
+            label, role = row[0], row[1]
 
-        Returns:
-            (success, message)
-        """
-        conn = self._get_conn()
-        rows = conn.execute(
-            "SELECT id, label, role FROM voice_users"
-        ).fetchall()
+            # Если удаляем админа и это НЕ перезапись (force), проверяем, чтобы он не был последним
+            if role == "Admin" and not force:
+                admin_count = conn.execute(
+                    "SELECT COUNT(*) FROM voice_users WHERE role='Admin'"
+                ).fetchone()[0]
+                if admin_count <= 1:
+                    return False, "I can't delete the only admin."
 
-        if not rows:
-            return False, "There are no registered users."
+            conn.execute("DELETE FROM voice_embeddings WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM voice_users WHERE id = ?", (user_id,))
+            conn.commit()
 
-        q = query.strip().lower()
-        match = None
-
-        # Try number-based match first: "1" or "1 guest" → user_1(...)
-        tokens = q.split()
-        if tokens and tokens[0].isdigit():
-            num = tokens[0]
-            role_hint = tokens[1] if len(tokens) > 1 else None
-            for uid, ulabel, urole in rows:
-                # Match "user_N(...)" pattern
-                if f"user_{num}(" in ulabel.lower():
-                    if role_hint is None or role_hint in ulabel.lower():
-                        match = (uid, ulabel, urole)
-                        break
-
-        # Fall back to partial label match
-        if match is None:
-            for uid, ulabel, urole in rows:
-                if q in ulabel.lower():
-                    match = (uid, ulabel, urole)
-                    break
-
-        if match is None:
-            return False, f"I couldn't find a user matching '{query}'."
-
-        uid, ulabel, urole = match
-
-        if urole == "Admin":
-            admin_count = conn.execute(
-                "SELECT COUNT(*) FROM voice_users WHERE role='Admin'"
-            ).fetchone()[0]
-            if admin_count <= 1:
-                return False, "I can't delete the only admin."
-
-        conn.execute("DELETE FROM voice_embeddings WHERE user_id = ?", (uid,))
-        conn.execute("DELETE FROM voice_users WHERE id = ?", (uid,))
-        conn.commit()
         self._invalidate_cache()
-        print(f"[VoiceAuth] Deleted user '{ulabel}' (role={urole})")
-        return True, f"Removed {ulabel}."
+        print(f"[VoiceAuth] Deleted user '{label}' (id={user_id}, role={role})")
+        return True, f"Deleted '{label}'."

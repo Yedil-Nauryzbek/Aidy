@@ -373,6 +373,12 @@ close steam,close app
 quit steam,close app
 exit steam,close app
 
+close everything,close everything
+close all,close everything
+close all apps,close everything
+close all applications,close everything
+close everything please,close everything
+
 custom mode,custom_mode
 custom mode on,custom_mode
 enable custom mode,custom_mode

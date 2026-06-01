@@ -13,6 +13,7 @@
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("pythoncore/aidy/assistant.py")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("pythoncore/aidy/config.py")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("pythoncore/aidy/context.py")]
+[assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("pythoncore/aidy/debug_logger.py")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("pythoncore/aidy/decision_core.py")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("pythoncore/aidy/delay.py")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("pythoncore/aidy/followup.py")]

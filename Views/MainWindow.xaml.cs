@@ -655,81 +655,200 @@ namespace WpfApp1.Views
             _vm.ResetMouseControl();
         }
 
+        private const int MaxVoiceProfiles = 5;
+
+        // ── Shared dialog helpers ─────────────────────────────────────────
+        private static readonly SolidColorBrush _dialogBg =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#111827"));
+        private static readonly SolidColorBrush _dialogCardBg =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B"));
+        private static readonly SolidColorBrush _accentBlue =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6"));
+        private static readonly SolidColorBrush _accentBlueHover =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2563EB"));
+        private static readonly SolidColorBrush _subtleText =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8"));
+        private static readonly SolidColorBrush _inputBg =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F172A"));
+        private static readonly SolidColorBrush _inputBorder =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#334155"));
+        private static readonly SolidColorBrush _cancelRed =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+
+        /// <summary>Creates a styled modern button for enrollment dialogs.</summary>
+        private static Button MakeDialogButton(string text, SolidColorBrush bg, double width = double.NaN, double height = 44)
+        {
+            var border = new Border
+            {
+                Background = bg,
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(0),
+                Child = new TextBlock
+                {
+                    Text = text,
+                    Foreground = Brushes.White,
+                    FontSize = 14,
+                    FontWeight = FontWeights.SemiBold,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+
+            var btn = new Button
+            {
+                Content = border,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                Height = height,
+                Padding = new Thickness(0),
+            };
+            if (!double.IsNaN(width)) btn.Width = width;
+
+            // Remove chrome so only the inner Border is visible
+            btn.Template = new ControlTemplate(typeof(Button))
+            {
+                VisualTree = CreateButtonTemplateTree()
+            };
+
+            return btn;
+        }
+
+        private static FrameworkElementFactory CreateButtonTemplateTree()
+        {
+            var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+            cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+            cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Stretch);
+            return cp;
+        }
+
+        /// <summary>Creates a borderless modern dialog window.</summary>
+        private static Window MakeDialogWindow(string title, double width, UIElement content)
+        {
+            return new Window
+            {
+                Title = title,
+                Width = width,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Topmost = true,
+                Background = _dialogBg,
+                Content = content,
+                AllowsTransparency = false,
+                WindowStyle = WindowStyle.SingleBorderWindow,
+                ResizeMode = ResizeMode.NoResize,
+            };
+        }
+
+        // ── Enrollment flow ───────────────────────────────────────────────
+
         private void EnrollAdminVoice_Click(object sender, RoutedEventArgs e)
         {
             if (!_bridgeStarted || _isEnrollmentActive) return;
 
-            // 1. Спрашиваем, уверен ли пользователь
-            var confirmResult = MessageBox.Show(
-                "Are you sure you want to setup the Voice ID?\nThis will overwrite any existing administrator voice profile.",
-                "Confirm Voice Enrollment",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+            // ─── STEP 1: Password Authentication ──────────────────────────
+            if (!ShowPasswordDialog()) return;
 
-            if (confirmResult != MessageBoxResult.Yes) return;
+            // ─── STEP 2: Overwrite or Add ─────────────────────────────────
+            bool? actionResult = ShowActionSelectionDialog();
+            if (actionResult == null) return; // cancelled
 
-            // 2. Создаем красивое поле для пароля
-            string username = Environment.UserName;
-            var passwordBox = new System.Windows.Controls.PasswordBox()
+            string selectedRole;
+            string selectedLabel;
+
+            if (actionResult == true)
             {
-                Margin = new Thickness(0, 5, 0, 15),
-                Height = 35,
-                FontSize = 16,
-                Background = Brushes.White,
-                Foreground = Brushes.Black,
-                Padding = new Thickness(6, 4, 6, 4)
-            };
+                // "Overwrite Existing" — re-enroll as Admin, replacing the current profile
+                selectedRole = "Admin";
+                selectedLabel = "";
 
-            // 3. Создаем кнопку и пытаемся натянуть на нее стиль SettingsActionButton
-            var verifyBtn = new Button
-            {
-                Content = "Verify",
-                Height = 40,
-                IsDefault = true,
-                Cursor = Cursors.Hand,
-                FontWeight = FontWeights.SemiBold,
-                FontSize = 15
-            };
-
-            var btnStyle = this.TryFindResource("SettingsActionButton") as Style;
-            if (btnStyle != null)
-            {
-                verifyBtn.Style = btnStyle;
+                // НАХОДИМ И УДАЛЯЕМ старые профили админа, чтобы действительно перезаписать
+                var existingAdmins = _vm.VoiceUsers.Where(u => u.Role.Equals("Admin", StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var admin in existingAdmins)
+                {
+                    // Добавляем флаг :force, чтобы Питон разрешил удалить единственного админа
+                    _bridge.SendControlCommand($"delete_voice_user:{admin.Id}:force");
+                }
             }
             else
             {
-                // Фоллбэк, если стиль не найдется
-                verifyBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1B3D72"));
-                verifyBtn.Foreground = Brushes.White;
-                verifyBtn.BorderThickness = new Thickness(0);
+                // "Add New Voice" — STEP 3: Profile Configuration
+                int currentCount = _vm.VoiceUsers.Count;
+                if (currentCount >= MaxVoiceProfiles)
+                {
+                    MessageBox.Show(
+                        $"Maximum of {MaxVoiceProfiles} voice profiles reached.\nPlease delete an existing profile first.",
+                        "Profile Limit Reached",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                var profileResult = ShowProfileConfigDialog(currentCount);
+                if (profileResult == null) return; // cancelled
+                selectedRole = profileResult.Value.role;
+                selectedLabel = profileResult.Value.label;
             }
 
-            // Собираем элементы в колонку
-            var stack = new StackPanel { Margin = new Thickness(25) };
-            stack.Children.Add(new TextBlock {
-                Text = $"Enter Windows password for '{username}':",
-                FontWeight = FontWeights.SemiBold,
-                FontSize = 14,
+            // ─── Start recording ──────────────────────────────────────────
+            StartEnrollmentRecording(selectedRole, selectedLabel);
+        }
+
+        // ── Step 1: Password ──────────────────────────────────────────────
+
+        private bool ShowPasswordDialog()
+        {
+            string username = Environment.UserName;
+
+            var titleText = new TextBlock
+            {
+                Text = "Authentication Required",
+                FontSize = 20,
+                FontWeight = FontWeights.Bold,
                 Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+
+            var subtitleText = new TextBlock
+            {
+                Text = "Verify your identity to manage voice profiles",
+                FontSize = 12,
+                Foreground = _subtleText,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 24)
+            };
+
+            var userLabel = new TextBlock
+            {
+                Text = $"Windows User: {username}",
+                FontSize = 12,
+                Foreground = _subtleText,
                 Margin = new Thickness(0, 0, 0, 8)
-            });
+            };
+
+            var passwordBox = new PasswordBox
+            {
+                Height = 42,
+                FontSize = 15,
+                Background = _inputBg,
+                Foreground = Brushes.White,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(12, 8, 12, 8),
+                Margin = new Thickness(0, 0, 0, 20),
+            };
+
+            var verifyBtn = MakeDialogButton("Verify Identity", _accentBlue);
+
+            var stack = new StackPanel { Margin = new Thickness(32, 28, 32, 28) };
+            stack.Children.Add(titleText);
+            stack.Children.Add(subtitleText);
+            stack.Children.Add(userLabel);
             stack.Children.Add(passwordBox);
             stack.Children.Add(verifyBtn);
 
-            // 4. Окно авторизации
-            var dialog = new Window
-            {
-                Title = "Aidy Security - Authentication",
-                Width = 380,
-                SizeToContent = SizeToContent.Height,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                Topmost = true,
-                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#141A2B")),
-                Content = stack,
-                AllowsTransparency = false,
-                WindowStyle = WindowStyle.SingleBorderWindow,
-                ResizeMode = ResizeMode.NoResize
-            };
+            var dialog = MakeDialogWindow("Aidy Security", 420, stack);
 
             bool isVerified = false;
             verifyBtn.Click += (s, args) =>
@@ -742,18 +861,348 @@ namespace WpfApp1.Views
                     }
                 }
                 catch { isVerified = false; }
-                dialog.DialogResult = isVerified;
+
+                if (!isVerified)
+                {
+                    MessageBox.Show("Incorrect password. Please try again.",
+                        "Authentication Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                dialog.DialogResult = true;
                 dialog.Close();
             };
 
-            // 5. Запускаем диалог
-            if (dialog.ShowDialog() != true || !isVerified)
-            {
-                MessageBox.Show("Authentication failed or cancelled.", "Access Denied", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
+            return dialog.ShowDialog() == true && isVerified;
+        }
 
-            // 6. Если пароль верный — переходим к записи голоса
+        // ── Step 2: Overwrite or Add ──────────────────────────────────────
+
+        /// <returns>true = overwrite, false = add new, null = cancelled</returns>
+        private bool? ShowActionSelectionDialog()
+        {
+            var titleText = new TextBlock
+            {
+                Text = "Voice Enrollment",
+                FontSize = 22,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+
+            var subtitleText = new TextBlock
+            {
+                Text = "Choose how to set up voice recognition",
+                FontSize = 13,
+                Foreground = _subtleText,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 28)
+            };
+
+            // ── Overwrite card ────────────────────────────────────────────
+            var overwriteIcon = new TextBlock
+            {
+                Text = "\U0001F504",   // 🔄
+                FontSize = 28,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            var overwriteTitle = new TextBlock
+            {
+                Text = "Overwrite Existing",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            var overwriteDesc = new TextBlock
+            {
+                Text = "Replace the current admin\nvoice profile with a new one",
+                FontSize = 11,
+                Foreground = _subtleText,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                LineHeight = 16
+            };
+            var overwriteStack = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            overwriteStack.Children.Add(overwriteIcon);
+            overwriteStack.Children.Add(overwriteTitle);
+            overwriteStack.Children.Add(overwriteDesc);
+
+            var overwriteCard = new Border
+            {
+                Background = _dialogCardBg,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(20, 28, 20, 28),
+                Cursor = Cursors.Hand,
+                Child = overwriteStack,
+                Width = 195
+            };
+
+            // ── Add New card ──────────────────────────────────────────────
+            var addIcon = new TextBlock
+            {
+                Text = "\u2795",   // ➕
+                FontSize = 28,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            var addTitle = new TextBlock
+            {
+                Text = "Add New Voice",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            var addDesc = new TextBlock
+            {
+                Text = $"Register a new user profile\n({_vm.VoiceUsers.Count}/{MaxVoiceProfiles} slots used)",
+                FontSize = 11,
+                Foreground = _subtleText,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                LineHeight = 16
+            };
+            var addStack = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            addStack.Children.Add(addIcon);
+            addStack.Children.Add(addTitle);
+            addStack.Children.Add(addDesc);
+
+            var addCard = new Border
+            {
+                Background = _dialogCardBg,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(20, 28, 20, 28),
+                Cursor = Cursors.Hand,
+                Child = addStack,
+                Width = 195
+            };
+
+            // Arrange the two cards side by side
+            var cardsPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            cardsPanel.Children.Add(overwriteCard);
+            cardsPanel.Children.Add(new Border { Width = 16 }); // spacer
+            cardsPanel.Children.Add(addCard);
+
+            var outerStack = new StackPanel { Margin = new Thickness(28, 28, 28, 28) };
+            outerStack.Children.Add(titleText);
+            outerStack.Children.Add(subtitleText);
+            outerStack.Children.Add(cardsPanel);
+
+            var dialog = MakeDialogWindow("Aidy - Voice Enrollment", 480, outerStack);
+            bool? result = null;
+
+            // Hover effects
+            overwriteCard.MouseEnter += (s, a) => overwriteCard.BorderBrush = _accentBlue;
+            overwriteCard.MouseLeave += (s, a) => overwriteCard.BorderBrush = _inputBorder;
+            addCard.MouseEnter += (s, a) => addCard.BorderBrush = _accentBlue;
+            addCard.MouseLeave += (s, a) => addCard.BorderBrush = _inputBorder;
+
+            overwriteCard.MouseLeftButtonUp += (s, a) =>
+            {
+                result = true; // overwrite
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+
+            addCard.MouseLeftButtonUp += (s, a) =>
+            {
+                result = false; // add new
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+
+            dialog.ShowDialog();
+            return result;
+        }
+
+        // ── Step 3: Profile Configuration ─────────────────────────────────
+
+        /// <returns>Tuple of (role, label) or null if cancelled.</returns>
+        private (string role, string label)? ShowProfileConfigDialog(int currentCount)
+        {
+            var titleText = new TextBlock
+            {
+                Text = "New Voice Profile",
+                FontSize = 20,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            var subtitleText = new TextBlock
+            {
+                Text = $"Configure the new profile ({currentCount}/{MaxVoiceProfiles} used)",
+                FontSize = 12,
+                Foreground = _subtleText,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 24)
+            };
+
+            // ── Role radio buttons ────────────────────────────────────────
+            // ── Role radio buttons ────────────────────────────────────────
+            var roleLabel = new TextBlock
+            {
+                Text = "ROLE",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = _subtleText,
+                Margin = new Thickness(0, 0, 0, 8),
+                // LetterSpacing = 0.5,  <-- Удали или закомментируй эту строку
+            };
+
+            var radioUser = new RadioButton
+            {
+                Content = "  User  —  standard access",
+                IsChecked = true,
+                Foreground = Brushes.White,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6),
+                GroupName = "Role"
+            };
+            var radioAdmin = new RadioButton
+            {
+                Content = "  Admin  —  full access",
+                Foreground = Brushes.White,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6),
+                GroupName = "Role"
+            };
+            var radioGuest = new RadioButton
+            {
+                Content = "  Guest  —  limited access",
+                Foreground = Brushes.White,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 0),
+                GroupName = "Role"
+            };
+
+            var roleCard = new Border
+            {
+                Background = _dialogCardBg,
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(16, 14, 16, 14),
+                Margin = new Thickness(0, 0, 0, 18),
+            };
+            var roleStack = new StackPanel();
+            roleStack.Children.Add(radioUser);
+            roleStack.Children.Add(radioAdmin);
+            roleStack.Children.Add(radioGuest);
+            roleCard.Child = roleStack;
+
+            // ── Profile label ─────────────────────────────────────────────
+            // ── Profile label ─────────────────────────────────────────────
+            var labelTitle = new TextBlock
+            {
+                Text = "PROFILE LABEL",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = _subtleText,
+                Margin = new Thickness(0, 0, 0, 8),
+                // LetterSpacing = 0.5,  <-- Удали или закомментируй эту строку
+            };
+            var labelBox = new TextBox
+            {
+                Height = 42,
+                FontSize = 14,
+                Background = _inputBg,
+                Foreground = Brushes.White,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(12, 8, 12, 8),
+                Margin = new Thickness(0, 0, 0, 24),
+                Text = "",
+            };
+            // Placeholder via GotFocus / LostFocus
+            string placeholder = "e.g. Yasin, User 2, Mom...";
+            labelBox.Text = placeholder;
+            labelBox.Foreground = _subtleText;
+            labelBox.GotFocus += (s, a) =>
+            {
+                if (labelBox.Text == placeholder)
+                {
+                    labelBox.Text = "";
+                    labelBox.Foreground = Brushes.White;
+                }
+            };
+            labelBox.LostFocus += (s, a) =>
+            {
+                if (string.IsNullOrWhiteSpace(labelBox.Text))
+                {
+                    labelBox.Text = placeholder;
+                    labelBox.Foreground = _subtleText;
+                }
+            };
+
+            // ── Buttons ──────────────────────────────────────────────────
+            var startBtn = MakeDialogButton("Start Recording", _accentBlue, double.NaN, 44);
+            var cancelBtn = MakeDialogButton("Cancel", new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")), double.NaN, 44);
+
+            var btnRow = new Grid { Margin = new Thickness(0) };
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) }); // spacer
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(cancelBtn, 0);
+            Grid.SetColumn(startBtn, 2);
+            btnRow.Children.Add(cancelBtn);
+            btnRow.Children.Add(startBtn);
+
+            // ── Assemble ──────────────────────────────────────────────────
+            var stack = new StackPanel { Margin = new Thickness(32, 28, 32, 28) };
+            stack.Children.Add(titleText);
+            stack.Children.Add(subtitleText);
+            stack.Children.Add(roleLabel);
+            stack.Children.Add(roleCard);
+            stack.Children.Add(labelTitle);
+            stack.Children.Add(labelBox);
+            stack.Children.Add(btnRow);
+
+            var dialog = MakeDialogWindow("Aidy - Profile Setup", 420, stack);
+
+            (string role, string label)? result = null;
+            startBtn.Click += (s, a) =>
+            {
+                string role = radioAdmin.IsChecked == true ? "Admin"
+                            : radioGuest.IsChecked == true ? "Guest"
+                            : "User";
+                string label = (labelBox.Text == placeholder) ? "" : labelBox.Text.Trim();
+                result = (role, label);
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+            cancelBtn.Click += (s, a) =>
+            {
+                dialog.DialogResult = false;
+                dialog.Close();
+            };
+
+            dialog.ShowDialog();
+            return result;
+        }
+
+        // ── Kick off recording ────────────────────────────────────────────
+
+        private void StartEnrollmentRecording(string role, string label)
+        {
             _isEnrollmentActive = true;
             _enrollmentConfirmedByPython = false;
 
@@ -761,14 +1210,17 @@ namespace WpfApp1.Views
             EnrollmentStatusText.Text = "Aidy is preparing...";
             EnrollmentProgressText.Text = "";
 
-            Debug.WriteLine("[Enroll] Sending control command: enroll_admin_force");
-            var sent = _bridge.SendControlCommand("enroll_admin_force");
+            string enrollCommand = string.IsNullOrEmpty(label)
+                ? $"enroll_user_force:{role}:"
+                : $"enroll_user_force:{role}:{label}";
+            Debug.WriteLine($"[Enroll] Sending control command: {enrollCommand}");
+            var sent = _bridge.SendControlCommand(enrollCommand);
             if (!sent)
             {
                 Debug.WriteLine("[Enroll] SendControlCommand failed — will retry in 3s");
             }
 
-            // Start a timeout timer: if Python doesn't confirm within 15s, retry once then give up.
+            // Timeout / retry timer
             int enrollRetries = 0;
             _enrollmentTimeoutTimer?.Stop();
             _enrollmentTimeoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(sent ? 15 : 3) };
@@ -783,9 +1235,9 @@ namespace WpfApp1.Views
                 enrollRetries++;
                 if (enrollRetries <= 2)
                 {
-                    Debug.WriteLine($"[Enroll] Timeout — retrying enroll_admin_force (attempt {enrollRetries})");
+                    Debug.WriteLine($"[Enroll] Timeout — retrying {enrollCommand} (attempt {enrollRetries})");
                     EnrollmentStatusText.Text = "Aidy is preparing... (retrying)";
-                    _bridge.SendControlCommand("enroll_admin_force");
+                    _bridge.SendControlCommand(enrollCommand);
                     _enrollmentTimeoutTimer!.Interval = TimeSpan.FromSeconds(10);
                 }
                 else
@@ -803,8 +1255,7 @@ namespace WpfApp1.Views
             };
             _enrollmentTimeoutTimer.Start();
 
-            // Safety timeout: if enrollment is confirmed but takes too long (e.g., Python crash),
-            // close the overlay after 90 seconds to prevent it from being stuck forever.
+            // Safety timeout (90s)
             var safetyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(90) };
             safetyTimer.Tick += (_, __) =>
             {
@@ -846,6 +1297,26 @@ namespace WpfApp1.Views
             else
             {
                 Debug.WriteLine("[Enroll] Cancel suppressed: Python has not confirmed ENROLL_STARTED yet.");
+            }
+        }
+
+        private void DeleteVoiceUser_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int userId)
+            {
+                var entry = _vm.VoiceUsers.FirstOrDefault(u => u.Id == userId);
+                string label = entry?.Label ?? $"ID {userId}";
+
+                var result = MessageBox.Show(
+                    $"Delete voice profile '{label}'?",
+                    "Confirm Deletion",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (result != MessageBoxResult.Yes) return;
+
+                Debug.WriteLine($"[Voice] Deleting voice user id={userId}");
+                _bridge.SendControlCommand($"delete_voice_user:{userId}");
             }
         }
 
@@ -1687,18 +2158,31 @@ namespace WpfApp1.Views
         private void ApplyState(AidyState state)
         {
             // stop previous (wave/rotate/glow)
+            OuterGlow.Visibility = Visibility.Visible;
+            OuterGlow.BeginAnimation(OpacityProperty, null);
+            OuterGlow.Opacity = 1;
+
             RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
             OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
             OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
             WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
             WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+            Wave.BeginAnimation(OpacityProperty, null);
+            Wave.Opacity = 1;
             Wave.Visibility = Visibility.Visible;
             WaitingHotkeySleep.Visibility = Visibility.Collapsed;
             SpeakingWave.Visibility = Visibility.Collapsed;
             FollowUpWave.Visibility = Visibility.Collapsed;
+            // Reset denied cross animations
+            DeniedCross.BeginAnimation(OpacityProperty, null);
+            DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+            DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+            DeniedCross.Opacity = 1;
+            DeniedCrossScale.ScaleX = 1; DeniedCrossScale.ScaleY = 1;
             DeniedCross.Visibility = Visibility.Collapsed;
             CenterEmblem.Visibility = Visibility.Collapsed;
             _emblemVisible = false;
+            
             if (_emblemSb != null) { _emblemSb.Stop(this); _emblemSb = null; }
             EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
             EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
@@ -1708,12 +2192,42 @@ namespace WpfApp1.Views
             EmblemGlow.Opacity = 0; EmblemGlow.BlurRadius = 0;
             StopWaveformAnimation();
 
-            // NOTE: overlay lifecycle is now driven entirely by _isEnrollmentActive and the
-            // EnrollmentFinished bridge event. Do NOT hide the overlay here based on Idle/Success.
-
             // ===== Ring storyboard by state =====
             switch (state)
             {
+                // ... (оставь все остальные case без изменений, кроме этих двух ниже) ...
+
+                case AidyState.AccessDenied:
+                    System.Media.SystemSounds.Hand.Play();
+                    // Fade out the blue glow & wave smoothly
+                    OuterGlow.BeginAnimation(OpacityProperty,
+                        new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(250))));
+                    Wave.BeginAnimation(OpacityProperty,
+                        new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(200))));
+                    // Show denied cross with fade-in + scale pop
+                    DeniedCross.Visibility = Visibility.Visible;
+                    DeniedCross.Opacity = 0;
+                    DeniedCross.BeginAnimation(OpacityProperty,
+                        new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300)))
+                        { EasingFunction = new SineEase { EasingMode = EasingMode.EaseOut } });
+                    DeniedCrossScale.ScaleX = 0.3;
+                    DeniedCrossScale.ScaleY = 0.3;
+                    var deniedPopX = new DoubleAnimation(0.3, 1.0, new Duration(TimeSpan.FromMilliseconds(350)))
+                    { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 4 } };
+                    var deniedPopY = new DoubleAnimation(0.3, 1.0, new Duration(TimeSpan.FromMilliseconds(350)))
+                    { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 4 } };
+                    DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, deniedPopX);
+                    DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, deniedPopY);
+                    StartRing("SB_Ring_AccessDenied");
+                    break;
+
+                case AidyState.Error:
+                    OuterGlow.Visibility = Visibility.Collapsed; // Прячем синий фон!
+                    Wave.BeginAnimation(OpacityProperty, _waveOff);
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    break;
+                    
+                // ... (остальные case тоже без изменений) ...
                 case AidyState.Starting:
                     StartRing("SB_Ring_Idle");
                     break;
@@ -1753,12 +2267,6 @@ namespace WpfApp1.Views
                     break;
                 case AidyState.Warning:
                     StartRing("SB_Ring_Warning");
-                    break;
-                case AidyState.AccessDenied:
-                    StartRing("SB_Ring_AccessDenied");
-                    break;
-                case AidyState.Error:
-                    StartRing("SB_Ring_Error");
                     break;
                 case AidyState.Offline:
                     StartRing("SB_Ring_Offline");
@@ -1835,6 +2343,7 @@ namespace WpfApp1.Views
 
                 case AidyState.Speaking:
                     Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
                     SpeakingWave.Visibility = Visibility.Visible;
                     StartWaveformAnimation();
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
@@ -1846,6 +2355,9 @@ namespace WpfApp1.Views
 
                 case AidyState.Confirming:
                     Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
+                    FollowUpWave.Visibility = Visibility.Visible;
+                    StartWaveformAnimation();
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
@@ -1909,11 +2421,8 @@ namespace WpfApp1.Views
                     break;
 
                 case AidyState.AccessDenied:
-                    Wave.Visibility = Visibility.Collapsed;
-                    DeniedCross.Visibility = Visibility.Visible;
+                    // Wave & DeniedCross already animated in the first switch
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
-                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
-                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
                     break;
 
                 case AidyState.Error:
