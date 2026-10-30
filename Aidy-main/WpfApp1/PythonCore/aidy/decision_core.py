@@ -1,5 +1,5 @@
 import re
-from typing import Callable
+from typing import Callable, Optional
 
 from .followup import FollowUpManager, PendingAction, PENDING_NEED_STEPS, PENDING_NEED_CHOICE
 from .config import NUMERIC_FOLLOWUP_WORD_TO_VALUE
@@ -53,18 +53,19 @@ STEP_INTENT_TO_LEGACY = {
     "brightness_down": "brightness down",
 }
 
+
 def normalize_intent_name(intent: str) -> str:
     return " ".join((intent or "").strip().lower().split()).replace(" ", "_")
 
 
-def api_intent_to_step_intent(intent: str) -> str | None:
+def api_intent_to_step_intent(intent: str) -> Optional[str]:
     key = normalize_intent_name(intent)
     if key in STEP_REQUIRED:
         return key
     return None
 
 
-def detect_step_intent_from_text(text: str) -> str | None:
+def detect_step_intent_from_text(text: str) -> Optional[str]:
     t = " ".join((text or "").strip().lower().split())
     for intent, phrases in STEP_REQUIRED_PHRASES.items():
         if t in phrases:
@@ -72,7 +73,7 @@ def detect_step_intent_from_text(text: str) -> str | None:
     return None
 
 
-def parse_numeric_input(text: str) -> int | None:
+def parse_numeric_input(text: str) -> Optional[int]:
     t = re.sub(r"[^a-z0-9 ]", " ", (text or "").lower())
     normalized = " ".join(t.split())
     if not normalized:
@@ -91,7 +92,7 @@ def parse_numeric_input(text: str) -> int | None:
     return NUMERIC_FOLLOWUP_WORD_TO_VALUE.get(tok)
 
 
-def extract_steps_value(text: str) -> int | None:
+def extract_steps_value(text: str) -> Optional[int]:
     t = re.sub(r"[^a-z0-9 ]", " ", (text or "").lower())
     normalized = " ".join(t.split())
     if not normalized:
@@ -120,9 +121,9 @@ class DecisionCore:
     def __init__(
         self,
         executor: Callable[[str, dict], bool],
-        follow_up: FollowUpManager | None = None,
-        step_required: dict | None = None,
-        last_step_actions: LastStepActionManager | None = None,
+        follow_up: Optional[FollowUpManager] = None,
+        step_required: Optional[dict] = None,
+        last_step_actions: Optional[LastStepActionManager] = None,
         repeat_last_steps: bool = False,
     ):
         self.executor = executor
@@ -131,7 +132,7 @@ class DecisionCore:
         self.last_step_actions = last_step_actions or LastStepActionManager(ttl_seconds=12.0)
         self.repeat_last_steps = repeat_last_steps
 
-    def handle_step_intent(self, intent_name: str, entities: dict | None = None) -> dict:
+    def handle_step_intent(self, intent_name: str, entities: Optional[dict] = None) -> dict:
         key = normalize_intent_name(intent_name)
         if key not in self.step_required:
             return {"handled": False}

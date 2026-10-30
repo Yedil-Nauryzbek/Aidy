@@ -2,11 +2,20 @@
 import glob
 import random
 import ctypes
-import time
 import re
+import threading
+import queue
+import wave
+import io
+import audioop
+import winsound
+from functools import lru_cache
+from contextlib import contextmanager
+from typing import Callable
 from ctypes import wintypes
 
 import pyttsx3
+import numpy as np
 
 winmm = ctypes.WinDLL("winmm")
 mciSendStringW = winmm.mciSendStringW
@@ -18,7 +27,45 @@ def mci(cmd: str) -> int:
     return mciSendStringW(cmd, None, 0, None)
 
 
-def play_audio(path: str, alias: str = "aidyvoice", wait: bool = False, max_ms: int | None = None) -> bool:
+@lru_cache(maxsize=256)
+def _wav_speech_bounds(path: str, modified_ns: int, size: int):
+    """Trim only outer silence; retain the original recordings and quiet endings."""
+    try:
+        with wave.open(path, "rb") as source:
+            if source.getsampwidth() != 2 or source.getcomptype() != "NONE":
+                return None
+            rate, channels = source.getframerate(), source.getnchannels()
+            samples = np.frombuffer(source.readframes(source.getnframes()), dtype=np.int16)
+        if not samples.size:
+            return None
+        samples = np.abs(samples.astype(np.float32).reshape(-1, channels))
+        block = max(1, rate // 100)
+        peaks = np.array([samples[i:i + block].max() for i in range(0, len(samples), block)])
+        active = np.flatnonzero(peaks > max(50.0, float(peaks.max()) * 0.006))
+        if not active.size:
+            return None
+        start = max(0, int(active[0] * block * 1000 / rate) - 30)
+        end = min(int(len(samples) * 1000 / rate),
+                  int((active[-1] + 1) * block * 1000 / rate) + 60)
+        return start, end
+    except (OSError, ValueError, wave.Error):
+        return None
+
+
+def play_audio(path: str, alias: str = "aidyvoice", wait: bool = False, max_ms: int | None = None, volume: int = 100) -> bool:
+    if wait and os.path.splitext(path)[1].lower() == '.wav':
+        try:
+            stat = os.stat(path)
+            data = _cached_wave(path, stat.st_mtime_ns, stat.st_size, max_ms)
+            if data is not None:
+                if volume != 100:
+                    data = _scale_wave(data, volume)
+                # Avoid MCI open/set/seek/close and repeated file reads on every
+                # wake. Synchronous memory playback ends at the actual clip end.
+                winsound.PlaySound(data, winsound.SND_MEMORY | winsound.SND_NODEFAULT)
+                return True
+        except (OSError, RuntimeError, ValueError, wave.Error):
+            pass  # Keep MCI available for unsupported WAVs/devices and MP3s.
     mci(f"close {alias}")
 
     p = path.replace('"', '\\"')
@@ -32,16 +79,26 @@ def play_audio(path: str, alias: str = "aidyvoice", wait: bool = False, max_ms: 
     if rc != 0:
         return False
 
-    if wait and max_ms is not None and int(max_ms) > 0:
-        rc = mci(f"play {alias}")
-        if rc != 0:
-            mci(f"close {alias}")
-            return False
-        time.sleep(max(0, int(max_ms)) / 1000.0)
-        mci(f"close {alias}")
-        return True
+    if volume != 100:
+        mci(f"setaudio {alias} volume to {max(0, min(100, volume)) * 10}")
 
-    play_cmd = f"play {alias}" + (" wait" if wait else "")
+    bounds = None
+    if ext == ".wav":
+        try:
+            stat = os.stat(path)
+            bounds = _wav_speech_bounds(path, stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            pass
+    if bounds is not None and mci(f"set {alias} time format milliseconds") == 0:
+        start, end = bounds
+        if max_ms is not None and int(max_ms) > 0:
+            end = min(end, start + int(max_ms))
+        play_cmd = f"play {alias} from {start} to {end}"
+    else:
+        play_cmd = f"play {alias}"
+        if max_ms is not None and int(max_ms) > 0 and mci(f"set {alias} time format milliseconds") == 0:
+            play_cmd += f" to {int(max_ms)}"
+    play_cmd += " wait" if wait else ""
     rc = mci(play_cmd)
     if rc != 0:
         mci(f"close {alias}")
@@ -53,10 +110,51 @@ def play_audio(path: str, alias: str = "aidyvoice", wait: bool = False, max_ms: 
     return True
 
 
+def _scale_wave(data: bytes, volume: int) -> bytes:
+    """Change only this clip's gain; do not alter the system output volume."""
+    with wave.open(io.BytesIO(data), 'rb') as source:
+        params = source.getparams()
+        pcm = source.readframes(source.getnframes())
+    output = io.BytesIO()
+    with wave.open(output, 'wb') as target:
+        target.setparams(params)
+        target.writeframes(audioop.mul(pcm, params.sampwidth, max(0, min(100, volume)) / 100.0))
+    return output.getvalue()
+
+
+@lru_cache(maxsize=256)
+def _cached_wave(path, modified_ns, size, max_ms=None):
+    bounds = _wav_speech_bounds(path, modified_ns, size)
+    with wave.open(path, 'rb') as source:
+        if source.getsampwidth() != 2 or source.getcomptype() != 'NONE':
+            return None
+        rate = source.getframerate()
+        start, end = bounds or (0, int(source.getnframes() * 1000 / rate))
+        if max_ms is not None and max_ms > 0:
+            end = min(end, start + int(max_ms))
+        source.setpos(int(start * rate / 1000))
+        frames = source.readframes(int((end - start) * rate / 1000))
+        output = io.BytesIO()
+        with wave.open(output, 'wb') as target:
+            target.setparams(source.getparams())
+            target.writeframes(frames)
+        return output.getvalue()
+
+
 class Voice:
-    def __init__(self, base_dir: str):
+    def __init__(
+        self,
+        base_dir: str,
+        before_playback: Callable[[], None] | None = None,
+        after_playback: Callable[[], None] | None = None,
+    ):
         self.base_dir = base_dir
         self.muted = False
+        self.current_volume = 100
+        self.before_playback = before_playback
+        self.after_playback = after_playback
+        self._playback_lock = threading.RLock()
+        self._playback_depth = 0
 
         candidates = [
             os.path.join(base_dir, "Assets", "voice"),
@@ -66,25 +164,55 @@ class Voice:
         ]
         self.voice_dir = next((p for p in candidates if os.path.isdir(p)), candidates[0])
 
-        self.engine = pyttsx3.init()
-        self.engine.setProperty("rate", 188)
-        self.engine.setProperty("volume", 0.9)
+        for key in ('wake', 'listening', 'ready', 'are_you_sure_clean'):
+            for path in glob.glob(os.path.join(self.voice_dir, key + '*.wav')):
+                try:
+                    stat = os.stat(path)
+                    _cached_wave(path, stat.st_mtime_ns, stat.st_size)
+                except (OSError, ValueError, wave.Error):
+                    pass
 
-        voices = self.engine.getProperty("voices")
-        zira_id = None
-        female_id = None
-        for v in voices:
-            name = (getattr(v, "name", "") or "").lower()
-            vid = (getattr(v, "id", "") or "").lower()
-            if "zira" in name or "zira" in vid:
-                zira_id = v.id
-                break
-            if female_id is None and "female" in name:
-                female_id = v.id
-        if zira_id:
-            self.engine.setProperty("voice", zira_id)
-        elif female_id:
-            self.engine.setProperty("voice", female_id)
+        self._tts_queue = queue.Queue()
+        self._tts_thread = threading.Thread(target=self._tts_loop, name="aidy-tts", daemon=True)
+        self._tts_thread.start()
+
+    def _tts_loop(self):
+        import pythoncom
+        pythoncom.CoInitialize()
+        engine = None
+        try:
+            while True:
+                item = self._tts_queue.get()
+                if item is None:
+                    break
+                text, done, result = item
+                try:
+                    if engine is None:
+                        engine = pyttsx3.init()
+                        engine.setProperty("rate", 188)
+                        for candidate in engine.getProperty("voices"):
+                            if "zira" in candidate.name.lower():
+                                engine.setProperty("voice", candidate.id)
+                                break
+                    engine.setProperty("volume", self.current_volume / 100.0)
+                    engine.say(text)
+                    engine.runAndWait()
+                    result.append(True)
+                except Exception as exc:
+                    print("TTS ERROR:", exc, flush=True)
+                    engine = None
+                    result.append(False)
+                finally:
+                    done.set()
+        finally:
+            if engine is not None:
+                engine.stop()
+            pythoncom.CoUninitialize()
+
+    def close(self):
+        self._tts_queue.put(None)
+        if self._tts_thread is not threading.current_thread():
+            self._tts_thread.join(timeout=2)
 
     def _pick_audio(self, key: str) -> str | None:
         exts = [".wav", ".mp3"]
@@ -109,13 +237,39 @@ class Voice:
                 return random.choice(candidates)
         return None
 
+    def set_volume(self, value: int):
+        self.current_volume = max(0, min(100, int(value)))
+
     def _prepare_tts_text(self, text: str) -> str:
         # SAPI voices can pause too long on punctuation in short assistant replies.
         # Collapse punctuation boundaries to keep responses snappy.
-        cleaned = re.sub(r"[,.;:!?]+\s*", " ", (text or "").strip())
+        # Keep question marks: removing them flattens confirmation intonation.
+        cleaned = re.sub(r"[,.;:!]+\s*", " ", (text or "").strip())
         return re.sub(r"\s{2,}", " ", cleaned).strip()
 
+    @contextmanager
+    def _playback(self):
+        # All clips and TTS share one output device. Keep capture suspended for
+        # the whole operation, including clip-to-TTS fallback and failures.
+        with self._playback_lock:
+            outermost = self._playback_depth == 0
+            self._playback_depth += 1
+            try:
+                if outermost and self.before_playback is not None:
+                    self.before_playback()
+                yield
+            finally:
+                self._playback_depth -= 1
+                if outermost and self.after_playback is not None:
+                    self.after_playback()
+
     def play_key(self, key: str, max_ms: int | None = None) -> bool:
+        if self.muted:
+            return False
+        with self._playback():
+            return self._play_key(key, max_ms)
+
+    def _play_key(self, key: str, max_ms: int | None = None) -> bool:
         if self.muted:
             return False
         audio = self._pick_audio(key)
@@ -127,11 +281,17 @@ class Voice:
         )
         if not audio or not os.path.exists(audio):
             return False
-        return play_audio(audio, alias="aidyvoice", wait=True, max_ms=max_ms)
+        return play_audio(audio, alias="aidyvoice", wait=True, max_ms=max_ms,
+                          volume=getattr(self, 'current_volume', 100))
 
     def play_or_tts(self, key: str, fallback_text: str) -> bool:
         if self.muted:
-            time.sleep(0.12)
+            return False
+        with self._playback():
+            return self._play_or_tts(key, fallback_text)
+
+    def _play_or_tts(self, key: str, fallback_text: str) -> bool:
+        if self.muted:
             return False
         audio = self._pick_audio(key)
         print(
@@ -142,24 +302,33 @@ class Voice:
         )
 
         if audio and os.path.exists(audio):
-            ok = play_audio(audio, alias="aidyvoice", wait=True)
+            ok = play_audio(audio, alias="aidyvoice", wait=True,
+                            volume=getattr(self, 'current_volume', 100))
             if ok:
                 return True
 
-        try:
-            self.engine.say(self._prepare_tts_text(fallback_text))
-            self.engine.runAndWait()
-            return True
-        except Exception as e:
-            print("TTS ERROR:", e, flush=True)
-            return False
+        return self._tts_blocking(fallback_text)
 
     def tts_blocking(self, text: str) -> bool:
         if self.muted:
             return False
+        with self._playback():
+            return self._tts_blocking(text)
+
+    def _tts_blocking(self, text: str) -> bool:
+        if self.muted:
+            return False
+        if hasattr(self, '_tts_queue'):
+            done, result = threading.Event(), []
+            self._tts_queue.put((self._prepare_tts_text(text), done, result))
+            # Keep capture suspended until speech really ends, including long enrollment prompts.
+            done.wait()
+            return bool(result and result[0])
+        # Device-free test doubles retain the synchronous engine interface.
         try:
             self.engine.say(self._prepare_tts_text(text))
             self.engine.runAndWait()
             return True
-        except Exception:
+        except Exception as exc:
+            print("TTS ERROR:", exc, flush=True)
             return False

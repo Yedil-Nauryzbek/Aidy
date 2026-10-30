@@ -137,11 +137,14 @@ def _startup():
             encoder = None
             startup_notes.append(f"encoder offline load failed: {e}")
 
-    try:
-        clf = joblib.load(CLF_PATH)
-    except Exception as e:
-        clf = None
-        startup_notes.append(f"classifier load failed: {e}")
+    # A classifier cannot operate without its matching encoder. Avoid loading
+    # unused artifacts (and their numerical runtime) in offline rule-only mode.
+    if encoder is not None:
+        try:
+            clf = joblib.load(CLF_PATH)
+        except Exception as e:
+            clf = None
+            startup_notes.append(f"classifier load failed: {e}")
 
 
 @app.get("/")

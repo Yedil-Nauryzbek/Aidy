@@ -1,0 +1,25 @@
+# Visual Studio и кэш проекта
+.vs/
+*.suo
+*.user
+*.slnx
+
+# Скомпилированные бинарники и артефакты сборки
+bin/
+obj/
+
+# Python кэш
+__pycache__/
+*.pyc
+
+# Логи и пользовательские бэкапы
+*.log
+bin/Debug/net8.0-windows/VoiceProfiles/
+.venv/
+python-embed/
+.validation/
+installer_output/
+VoiceProfiles/
+voice_profiles.db*
+speechbrain_models/
+KILLER_BUG.txt

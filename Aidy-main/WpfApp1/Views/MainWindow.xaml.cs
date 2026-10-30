@@ -1,8 +1,10 @@
-﻿// WpfApp1/Views/MainWindow.xaml.cs
+// WpfApp1/Views/MainWindow.xaml.cs
+using System.DirectoryServices.AccountManagement;
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,6 +14,9 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Navigation;
 using System.Windows.Threading;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using WpfApp1.Models;
 using WpfApp1.Services;
 using WpfApp1.ViewModels;
@@ -20,16 +25,28 @@ namespace WpfApp1.Views
 {
     public partial class MainWindow : Window
     {
+        private bool _isClosing;
+        private void OnUi(Action action)
+        {
+            if (_isClosing || Dispatcher.HasShutdownStarted) return;
+            Dispatcher.BeginInvoke(new Action(() => { if (!_isClosing) action(); }));
+        }
         private readonly MainViewModel _vm;
         private readonly PythonBridge _bridge;
         private readonly AppConfigService _configService;
         private readonly AudioDeviceService _audioDeviceService;
         private readonly GlobalHotkeyService _pushToTalkHotkey;
 
+        // Display name → apps.json id mapping for preferred app ComboBoxes
+        private readonly Dictionary<string, string> _browserDisplayToId = new();
+        private readonly Dictionary<string, string> _musicDisplayToId = new();
+        private const string SystemDefaultLabel = "System Default";
+
         private DoubleAnimation _rotateSlow = null!;
         private DoubleAnimation _rotateFast = null!;
         private DoubleAnimation _glowIdle = null!;
         private DoubleAnimation _glowActive = null!;
+        private DoubleAnimation _glowCommandListening = null!;
         private DoubleAnimation _waveOff = null!;
         private DoubleAnimation _waveSpeaking = null!;
         private DoubleAnimation _waveProcessing = null!;
@@ -43,6 +60,8 @@ namespace WpfApp1.Views
         private readonly SolidColorBrush _studyTimerArcBrush = new(Color.FromRgb(0x57, 0xF2, 0x87));
         private const int WM_NCHITTEST = 0x0084;
         private const int HTTRANSPARENT = -1;
+        private const int WM_DEVICECHANGE = 0x0219;
+        private const int DBT_DEVNODES_CHANGED = 0x0007;
         private bool _isCompactMode;
         private string _pageBeforeCompact = "AIDY";
         private readonly double _normalShellWidth = 1413;
@@ -68,12 +87,15 @@ namespace WpfApp1.Views
         private readonly GridLength _normalTitleRowHeight = new(64);
         private readonly GridLength _compactTitleRowHeight = new(46);
         private readonly Thickness _normalOrbMargin = new(0, 140, 0, 0);
-        private readonly Thickness _compactOrbMargin = new(-18, 4, 0, 0);
+        private readonly Thickness _compactOrbMargin = new(0, 44, 0, 0);
         private readonly double _normalOrbScale = 1.0;
-        private readonly double _compactOrbScale = 0.60;
+        private readonly double _compactOrbScale = 0.54;
         private bool _bridgeStarted;
         private bool _isPushToTalkPressed;
         private bool _isApplyingAutoStartSetting;
+        private bool _isEnrollmentActive;
+        private bool _enrollmentConfirmedByPython;
+        private DispatcherTimer? _enrollmentTimeoutTimer;
         private static readonly string[] WakeDebugMarkers =
         {
             "[WAKE]",
@@ -95,6 +117,29 @@ namespace WpfApp1.Views
 
         // ===== Ring storyboard controller =====
         private Storyboard? _ringSb;
+        private Storyboard? _emblemSb;
+        private bool _emblemVisible = false;
+        private double _smoothScrollTargetOffset;
+        public static readonly DependencyProperty CurrentScrollOffsetProperty =
+            DependencyProperty.Register(
+                nameof(CurrentScrollOffset),
+                typeof(double),
+                typeof(MainWindow),
+                new PropertyMetadata(0d, OnCurrentScrollOffsetChanged));
+
+        public double CurrentScrollOffset
+        {
+            get => (double)GetValue(CurrentScrollOffsetProperty);
+            set => SetValue(CurrentScrollOffsetProperty, value);
+        }
+
+        private static void OnCurrentScrollOffsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is MainWindow window && window.SettingsScrollViewerElement is not null)
+            {
+                window.SettingsScrollViewerElement.ScrollToVerticalOffset((double)e.NewValue);
+            }
+        }
 
         public MainWindow()
         {
@@ -122,8 +167,38 @@ namespace WpfApp1.Views
             _vm.AutoStartEnabled = syncedAutoStartEnabled;
             _vm.SetAudioDevices(inputDevices, outputDevices, appConfig.Audio.Microphone, appConfig.Audio.OutputDevice);
             _vm.GreetingOnStartupEnabled = appConfig.Startup.GreetingEnabled;
-            _vm.AidiFilePath = appConfig.Aidi.FilePath;
+            _vm.AidiFilePath = string.IsNullOrWhiteSpace(appConfig.Aidi.FilePath)
+                ? (Environment.ProcessPath ?? Path.Combine(baseDir, "WpfApp1.exe"))
+                : appConfig.Aidi.FilePath;
             _vm.AidiVolume = appConfig.Aidi.Volume;
+            _vm.VoiceIdEnabled = appConfig.VoiceIdEnabled;
+            _vm.CustomModeEnabled = appConfig.CustomMode.Enabled;
+            var savedSlots = appConfig.CustomMode.Slots;
+            // Load base 3 slots
+            for (int i = 0; i < Math.Min(savedSlots.Length, _vm.CustomModeSlots.Count); i++)
+                _vm.CustomModeSlots[i].Apply(savedSlots[i]);
+            // Add extra saved slots (4th, 5th) if they exist and have content
+            for (int i = _vm.CustomModeSlots.Count; i < Math.Min(savedSlots.Length, MainViewModel.CustomModeSlotsMax); i++)
+            {
+                if (!string.IsNullOrEmpty(savedSlots[i].Target))
+                {
+                    var extra = new CustomModeSlotViewModel(i);
+                    extra.Apply(savedSlots[i]);
+                    _vm.CustomModeSlots.Add(extra);
+                }
+            }
+            _vm.RefreshCanAddCustomSlot();
+
+            _vm.VadThreshold = appConfig.VoiceSensitivity.VadThreshold;
+            _vm.SilenceMs = appConfig.VoiceSensitivity.SilenceMs;
+            _vm.MinSpeechMs = appConfig.VoiceSensitivity.MinSpeechMs;
+            _vm.MouseMovePx = appConfig.MouseControl.MovePx;
+            _vm.MouseScrollClicks = appConfig.MouseControl.ScrollClicks;
+            _vm.MouseScrollStep = appConfig.MouseControl.ScrollStep;
+
+            PopulatePreferredAppOptions(baseDir);
+            _vm.PreferredBrowser = ResolvePreferredSelection(_vm.BrowserOptions, _browserDisplayToId, appConfig.PreferredApps.Browser);
+            _vm.PreferredMusicApp = ResolvePreferredSelection(_vm.MusicAppOptions, _musicDisplayToId, appConfig.PreferredApps.MusicApp);
 
             appConfig.AutoStartEnabled = syncedAutoStartEnabled;
             appConfig.Audio.Microphone = _vm.SelectedMicrophoneDevice;
@@ -133,8 +208,12 @@ namespace WpfApp1.Views
             appConfig.Aidi.Volume = _vm.AidiVolume;
             SafeSaveConfig(appConfig);
 
+            // Prefer bundled embedded Python; fall back to system "python"
+            var bundledPython = System.IO.Path.Combine(baseDir, "python-embed", "python.exe");
+            var pythonExe = System.IO.File.Exists(bundledPython) ? bundledPython : "python";
+
             _bridge = new PythonBridge(
-                pythonExe: "python",
+                pythonExe: pythonExe,
                 scriptPath: scriptPath,
                 workingDir: baseDir
             );
@@ -147,36 +226,88 @@ namespace WpfApp1.Views
 
             _waveformTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(70)
+                Interval = TimeSpan.FromMilliseconds(120)
             };
             _waveformTimer.Tick += WaveformTimerOnTick;
             _studyTimerUiTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(33),
+                Interval = TimeSpan.FromMilliseconds(66),
             };
             _studyTimerUiTimer.Tick += StudyTimerUiTimerOnTick;
 
-            _bridge.StateChanged += s => Dispatcher.Invoke(() => { _vm.CurrentState = s; Console.WriteLine($"[UI] State changed to {s}"); });
-            // Logs are intentionally hidden from UI.
-            // _bridge.LogLine += line => Dispatcher.Invoke(() => AppendBridgeLogLine(line));
+            _bridge.StateChanged += s => OnUi(() => _vm.CurrentState = s);
+            _bridge.LogLine += line => OnUi(() => AppendBridgeLogLine(line));
+            InitializeAudioWaves();
 
             // Show last command, but hide internal/system keywords (exit, etc.)
-            _bridge.CommandHeard += t => Dispatcher.Invoke(() =>
+            _bridge.CommandHeard += t => Dispatcher.BeginInvoke(() =>
             {
                 _vm.LastCommand = FormatUserFacingCommand(t);
             });
-            _bridge.TimerChanged += (eventName, remaining, total) => Dispatcher.Invoke(() =>
+            _bridge.TimerChanged += (eventName, remaining, total) => Dispatcher.BeginInvoke(() =>
             {
                 var e = (eventName ?? "").Trim().ToLowerInvariant();
                 UpdateTimerBadge(e, remaining, total);
             });
-            _bridge.StudyModeChanged += active => Dispatcher.Invoke(() =>
+            _bridge.StudyModeChanged += active => Dispatcher.BeginInvoke(() =>
             {
                 StudyTipsPanel.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+            });
+            _bridge.CustomModeChanged += active => Dispatcher.BeginInvoke(() =>
+            {
+                Debug.WriteLine($"[CustomMode] Bridge reports custom mode changed: {active}");
+                _vm.AppendLogLine($"[CustomMode] Bridge event: custom mode = {active}");
+                // Slots are already executed by Python directly — do NOT re-send
+                // execute_slot commands back, as that causes double execution.
+            });
+            _bridge.VoiceActivityChanged += active => Dispatcher.BeginInvoke(() => SetEmblemActive(active));
+            _bridge.EnrollmentFinished += () => Dispatcher.BeginInvoke(() =>
+            {
+                // Python explicitly signalled the end of enrollment — safe to close the overlay.
+                _enrollmentTimeoutTimer?.Stop();
+                _isEnrollmentActive = false;
+                _enrollmentConfirmedByPython = false;
+                EnrollmentOverlay.Visibility = Visibility.Collapsed;
+            });
+            _bridge.EnrollmentStarted += () => Dispatcher.BeginInvoke(() =>
+            {
+                // Python acknowledged the enrollment — cancel button is now safe to use.
+                Debug.WriteLine("[Enroll] Python confirmed ENROLL_STARTED.");
+                _enrollmentTimeoutTimer?.Stop();
+                _enrollmentConfirmedByPython = true;
+            });
+            _bridge.EnrollmentTextChanged += (status, progress) => Dispatcher.BeginInvoke(() =>
+            {
+                EnrollmentStatusText.Text = status;
+                EnrollmentProgressText.Text = progress;
+            });
+            _bridge.VoiceUsersChanged += (entries) => Dispatcher.BeginInvoke(() =>
+            {
+                _vm.UpdateVoiceUsers(entries);
             });
 
             Loaded += (_, __) =>
             {
+                // --- ЗАПУСК ЗАСТАВКИ ---
+                if (_vm.GreetingOnStartupEnabled)
+                {
+                    var videoPath = Path.Combine(baseDir, "Assets", "SplashOverlay.mp4");
+                    if (File.Exists(videoPath))
+                    {
+                        SplashVideo.Source = new Uri(videoPath, UriKind.Absolute);
+                        SplashVideo.Play();
+                    }
+                    else
+                    {
+                        SplashOverlay.Visibility = Visibility.Collapsed;
+                    }
+                }
+                else
+                {
+                    SplashOverlay.Visibility = Visibility.Collapsed;
+                }
+                // -----------------------
+
                 ShowPage("AIDY");
                 BuildAnimations();
                 _vm.CurrentState = AidyState.Starting;
@@ -186,13 +317,43 @@ namespace WpfApp1.Views
                 _pushToTalkHotkey.Start();
                 ApplyPushToTalkSettings(persistConfig: false);
                 _bridge.SendControlCommand($"set_volume:{_vm.AidiVolume}");
+                _bridge.SendControlCommand($"set_voice_id:{(_vm.VoiceIdEnabled ? "1" : "0")}");
             };
 
             Closing += (_, __) =>
             {
+                _isClosing = true;
+                StopAudioWaves();
+                _waveformTimer.Stop();
+                _studyTimerUiTimer.Stop();
+                _vm.PropertyChanged -= VmOnPropertyChanged;
+                _pushToTalkHotkey.HotkeyDown -= OnPushToTalkHotkeyDown;
+                _pushToTalkHotkey.HotkeyUp -= OnPushToTalkHotkeyUp;
                 _pushToTalkHotkey.Dispose();
                 _bridge.Dispose();
             };
+        }
+
+        // =========================
+        // ЛОГИКА ЗАСТАВКИ
+        // =========================
+        private void SplashVideo_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            // Создаем плавное затухание (Fade-out эффект) на 400 миллисекунд
+            var fadeOut = new DoubleAnimation
+            {
+                From = 1.0,
+                To = 0.0,
+                Duration = TimeSpan.FromMilliseconds(400)
+            };
+
+            fadeOut.Completed += (s, args) =>
+            {
+                SplashOverlay.Visibility = Visibility.Collapsed; // Убираем Grid полностью
+                SplashVideo.Close(); // Освобождаем ресурсы плеера
+            };
+
+            SplashOverlay.BeginAnimation(UIElement.OpacityProperty, fadeOut);
         }
 
         private void StudyTimerUiTimerOnTick(object? sender, EventArgs e)
@@ -219,6 +380,14 @@ namespace WpfApp1.Views
             }
         }
 
+        private void ShellRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            // Border rounds its own fill, but does not clip child backgrounds.
+            // Keep title-bar highlights inside the panel in both window sizes.
+            double radius = Math.Max(0, MainShell.CornerRadius.TopLeft - MainShell.BorderThickness.Left);
+            ShellRoot.Clip = new RectangleGeometry(new Rect(e.NewSize), radius, radius);
+        }
+
         private void AttachOuterAreaClickThrough()
         {
             if (PresentationSource.FromVisual(this) is HwndSource source)
@@ -229,8 +398,26 @@ namespace WpfApp1.Views
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+            if (msg == WM_DEVICECHANGE && (int)wParam == DBT_DEVNODES_CHANGED)
+            {
+                RefreshAudioDevices();
+                return IntPtr.Zero;
+            }
+
             if (msg != WM_NCHITTEST)
             {
+                return IntPtr.Zero;
+            }
+
+            if (_isDockMode)
+            {
+                var dockPoint = DockRoot.PointFromScreen(new Point((short)((long)lParam & 0xFFFF),
+                    (short)(((long)lParam >> 16) & 0xFFFF)));
+                if (DockRoot.InputHitTest(dockPoint) == null)
+                {
+                    handled = true;
+                    return new IntPtr(HTTRANSPARENT);
+                }
                 return IntPtr.Zero;
             }
 
@@ -274,7 +461,7 @@ namespace WpfApp1.Views
                     edgeMaxHeight: 50,
                     centerMinHeight: 24,
                     centerMaxHeight: 88,
-                    blend: 0.68);
+                    blend: 0.82);
             }
 
             if (FollowUpWave.Visibility == Visibility.Visible)
@@ -285,7 +472,7 @@ namespace WpfApp1.Views
                     edgeMaxHeight: 46,
                     centerMinHeight: 22,
                     centerMaxHeight: 82,
-                    blend: 0.64);
+                    blend: 0.78);
             }
 
             if (SpeakingWave.Visibility != Visibility.Visible && FollowUpWave.Visibility != Visibility.Visible)
@@ -344,6 +531,9 @@ namespace WpfApp1.Views
         {
             if (e.PropertyName == nameof(MainViewModel.CurrentState))
             {
+                // NOTE: overlay lifecycle is now driven entirely by _isEnrollmentActive and the
+                // EnrollmentFinished bridge event. Do NOT hide the overlay here based on Idle/Success —
+                // those states are emitted between TTS prompts and would close the overlay too early.
                 RefreshPushToTalkWaitingState();
                 ApplyState(_vm.CurrentState);
                 return;
@@ -363,6 +553,14 @@ namespace WpfApp1.Views
                 return;
             }
 
+            if (e.PropertyName == nameof(MainViewModel.CustomModeEnabled))
+            {
+                Debug.WriteLine($"[CustomMode] Toggle changed: enabled={_vm.CustomModeEnabled}");
+                _vm.AppendLogLine($"[CustomMode] Toggle changed: enabled={_vm.CustomModeEnabled}");
+                SaveCurrentConfig();
+                return;
+            }
+
             if (e.PropertyName == nameof(MainViewModel.SelectedMicrophoneDevice) ||
                 e.PropertyName == nameof(MainViewModel.SelectedOutputDevice) ||
                 e.PropertyName == nameof(MainViewModel.GreetingOnStartupEnabled) ||
@@ -372,12 +570,50 @@ namespace WpfApp1.Views
                 return;
             }
 
+            if (e.PropertyName == nameof(MainViewModel.VadThreshold) ||
+                e.PropertyName == nameof(MainViewModel.SilenceMs) ||
+                e.PropertyName == nameof(MainViewModel.MinSpeechMs) ||
+                e.PropertyName == nameof(MainViewModel.MouseMovePx) ||
+                e.PropertyName == nameof(MainViewModel.MouseScrollClicks) ||
+                e.PropertyName == nameof(MainViewModel.MouseScrollStep))
+            {
+                SaveCurrentConfig();
+                if (_bridgeStarted)
+                {
+                    _bridge.SendControlCommand("reload_config");
+                }
+                return;
+            }
+
             if (e.PropertyName == nameof(MainViewModel.AidiVolume))
             {
                 SaveCurrentConfig();
                 if (_bridgeStarted)
                 {
                     _bridge.SendControlCommand($"set_volume:{_vm.AidiVolume}");
+                }
+                return;
+            }
+
+            if (e.PropertyName == nameof(MainViewModel.VoiceIdEnabled))
+            {
+                SaveCurrentConfig();
+                if (_bridgeStarted)
+                {
+                    _bridge.SendControlCommand($"set_voice_id:{(_vm.VoiceIdEnabled ? "1" : "0")}");
+                    if (_vm.VoiceIdEnabled)
+                        _bridge.SendControlCommand("list_voice_users");
+                }
+                return;
+            }
+
+            if (e.PropertyName == nameof(MainViewModel.PreferredBrowser) ||
+                e.PropertyName == nameof(MainViewModel.PreferredMusicApp))
+            {
+                SaveCurrentConfig();
+                if (_bridgeStarted)
+                {
+                    _bridge.SendControlCommand("reload_config");
                 }
                 return;
             }
@@ -426,8 +662,790 @@ namespace WpfApp1.Views
             _vm.IsPushToTalkKeyCaptureActive = !_vm.IsPushToTalkKeyCaptureActive;
         }
 
+        private void ResetVoiceSensitivity_Click(object sender, RoutedEventArgs e)
+        {
+            _vm.ResetVoiceSensitivity();
+        }
+
+        private void ResetMouseControl_Click(object sender, RoutedEventArgs e)
+        {
+            _vm.ResetMouseControl();
+        }
+
+        private const int MaxVoiceProfiles = 5;
+
+        // ── Shared dialog helpers ─────────────────────────────────────────
+        private static readonly SolidColorBrush _dialogBg =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#111827"));
+        private static readonly SolidColorBrush _dialogCardBg =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B"));
+        private static readonly SolidColorBrush _accentBlue =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6"));
+        private static readonly SolidColorBrush _accentBlueHover =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2563EB"));
+        private static readonly SolidColorBrush _subtleText =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8"));
+        private static readonly SolidColorBrush _inputBg =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F172A"));
+        private static readonly SolidColorBrush _inputBorder =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#334155"));
+        private static readonly SolidColorBrush _cancelRed =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+
+        /// <summary>Creates a styled modern button for enrollment dialogs.</summary>
+        private static Button MakeDialogButton(string text, SolidColorBrush bg, double width = double.NaN, double height = 44)
+        {
+            var border = new Border
+            {
+                Background = bg,
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(0),
+                Child = new TextBlock
+                {
+                    Text = text,
+                    Foreground = Brushes.White,
+                    FontSize = 14,
+                    FontWeight = FontWeights.SemiBold,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+
+            var btn = new Button
+            {
+                Content = border,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                Height = height,
+                Padding = new Thickness(0),
+            };
+            if (!double.IsNaN(width)) btn.Width = width;
+
+            // Remove chrome so only the inner Border is visible
+            btn.Template = new ControlTemplate(typeof(Button))
+            {
+                VisualTree = CreateButtonTemplateTree()
+            };
+
+            return btn;
+        }
+
+        private static FrameworkElementFactory CreateButtonTemplateTree()
+        {
+            var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+            cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+            cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Stretch);
+            return cp;
+        }
+
+        /// <summary>Creates a borderless modern dialog window.</summary>
+        private static Window MakeDialogWindow(string title, double width, UIElement content)
+        {
+            return new Window
+            {
+                Title = title,
+                Width = width,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Topmost = true,
+                Background = _dialogBg,
+                Content = content,
+                AllowsTransparency = false,
+                WindowStyle = WindowStyle.SingleBorderWindow,
+                ResizeMode = ResizeMode.NoResize,
+            };
+        }
+
+        // ── Enrollment flow ───────────────────────────────────────────────
+
+        private void EnrollAdminVoice_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_bridgeStarted || _isEnrollmentActive) return;
+
+            // ─── STEP 1: Password Authentication ──────────────────────────
+            if (!ShowPasswordDialog()) return;
+
+            // ─── STEP 2: Overwrite or Add ─────────────────────────────────
+            bool? actionResult = ShowActionSelectionDialog();
+            if (actionResult == null) return; // cancelled
+
+            string selectedRole;
+            string selectedLabel;
+
+            if (actionResult == true)
+            {
+                // "Overwrite Existing" — re-enroll as Admin, replacing the current profile
+                selectedRole = "Admin";
+                selectedLabel = "";
+
+                // НАХОДИМ И УДАЛЯЕМ старые профили админа, чтобы действительно перезаписать
+                var existingAdmins = _vm.VoiceUsers.Where(u => u.Role.Equals("Admin", StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var admin in existingAdmins)
+                {
+                    // Добавляем флаг :force, чтобы Питон разрешил удалить единственного админа
+                    _bridge.SendControlCommand($"delete_voice_user:{admin.Id}:force");
+                }
+            }
+            else
+            {
+                // "Add New Voice" — STEP 3: Profile Configuration
+                int currentCount = _vm.VoiceUsers.Count;
+                if (currentCount >= MaxVoiceProfiles)
+                {
+                    MessageBox.Show(
+                        $"Maximum of {MaxVoiceProfiles} voice profiles reached.\nPlease delete an existing profile first.",
+                        "Profile Limit Reached",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                var profileResult = ShowProfileConfigDialog(currentCount);
+                if (profileResult == null) return; // cancelled
+                selectedRole = profileResult.Value.role;
+                selectedLabel = profileResult.Value.label;
+            }
+
+            // ─── Start recording ──────────────────────────────────────────
+            StartEnrollmentRecording(selectedRole, selectedLabel);
+        }
+
+        // ── Step 1: Password ──────────────────────────────────────────────
+
+        private bool ShowPasswordDialog()
+        {
+            string username = Environment.UserName;
+
+            var titleText = new TextBlock
+            {
+                Text = "Authentication Required",
+                FontSize = 20,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+
+            var subtitleText = new TextBlock
+            {
+                Text = "Verify your identity to manage voice profiles",
+                FontSize = 12,
+                Foreground = _subtleText,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 24)
+            };
+
+            var userLabel = new TextBlock
+            {
+                Text = $"Windows User: {username}",
+                FontSize = 12,
+                Foreground = _subtleText,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+
+            var passwordBox = new PasswordBox
+            {
+                Height = 42,
+                FontSize = 15,
+                Background = _inputBg,
+                Foreground = Brushes.White,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(12, 8, 12, 8),
+                Margin = new Thickness(0, 0, 0, 20),
+            };
+
+            var verifyBtn = MakeDialogButton("Verify Identity", _accentBlue);
+
+            var stack = new StackPanel { Margin = new Thickness(32, 28, 32, 28) };
+            stack.Children.Add(titleText);
+            stack.Children.Add(subtitleText);
+            stack.Children.Add(userLabel);
+            stack.Children.Add(passwordBox);
+            stack.Children.Add(verifyBtn);
+
+            var dialog = MakeDialogWindow("Aidy Security", 420, stack);
+
+            bool isVerified = false;
+            verifyBtn.Click += (s, args) =>
+            {
+                try
+                {
+                    using (var context = new PrincipalContext(ContextType.Machine))
+                    {
+                        isVerified = context.ValidateCredentials(username, passwordBox.Password);
+                    }
+                }
+                catch { isVerified = false; }
+
+                if (!isVerified)
+                {
+                    MessageBox.Show("Incorrect password. Please try again.",
+                        "Authentication Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+
+            return dialog.ShowDialog() == true && isVerified;
+        }
+
+        // ── Step 2: Overwrite or Add ──────────────────────────────────────
+
+        /// <returns>true = overwrite, false = add new, null = cancelled</returns>
+        private bool? ShowActionSelectionDialog()
+        {
+            var titleText = new TextBlock
+            {
+                Text = "Voice Enrollment",
+                FontSize = 22,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+
+            var subtitleText = new TextBlock
+            {
+                Text = "Choose how to set up voice recognition",
+                FontSize = 13,
+                Foreground = _subtleText,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 28)
+            };
+
+            // ── Overwrite card ────────────────────────────────────────────
+            var overwriteIcon = new TextBlock
+            {
+                Text = "\U0001F504",   // 🔄
+                FontSize = 28,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            var overwriteTitle = new TextBlock
+            {
+                Text = "Overwrite Existing",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            var overwriteDesc = new TextBlock
+            {
+                Text = "Replace the current admin\nvoice profile with a new one",
+                FontSize = 11,
+                Foreground = _subtleText,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                LineHeight = 16
+            };
+            var overwriteStack = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            overwriteStack.Children.Add(overwriteIcon);
+            overwriteStack.Children.Add(overwriteTitle);
+            overwriteStack.Children.Add(overwriteDesc);
+
+            var overwriteCard = new Border
+            {
+                Background = _dialogCardBg,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(20, 28, 20, 28),
+                Cursor = Cursors.Hand,
+                Child = overwriteStack,
+                Width = 195
+            };
+
+            // ── Add New card ──────────────────────────────────────────────
+            var addIcon = new TextBlock
+            {
+                Text = "\u2795",   // ➕
+                FontSize = 28,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            var addTitle = new TextBlock
+            {
+                Text = "Add New Voice",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            var addDesc = new TextBlock
+            {
+                Text = $"Register a new user profile\n({_vm.VoiceUsers.Count}/{MaxVoiceProfiles} slots used)",
+                FontSize = 11,
+                Foreground = _subtleText,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                LineHeight = 16
+            };
+            var addStack = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            addStack.Children.Add(addIcon);
+            addStack.Children.Add(addTitle);
+            addStack.Children.Add(addDesc);
+
+            var addCard = new Border
+            {
+                Background = _dialogCardBg,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(20, 28, 20, 28),
+                Cursor = Cursors.Hand,
+                Child = addStack,
+                Width = 195
+            };
+
+            // Arrange the two cards side by side
+            var cardsPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            cardsPanel.Children.Add(overwriteCard);
+            cardsPanel.Children.Add(new Border { Width = 16 }); // spacer
+            cardsPanel.Children.Add(addCard);
+
+            var outerStack = new StackPanel { Margin = new Thickness(28, 28, 28, 28) };
+            outerStack.Children.Add(titleText);
+            outerStack.Children.Add(subtitleText);
+            outerStack.Children.Add(cardsPanel);
+
+            var dialog = MakeDialogWindow("Aidy - Voice Enrollment", 480, outerStack);
+            bool? result = null;
+
+            // Hover effects
+            overwriteCard.MouseEnter += (s, a) => overwriteCard.BorderBrush = _accentBlue;
+            overwriteCard.MouseLeave += (s, a) => overwriteCard.BorderBrush = _inputBorder;
+            addCard.MouseEnter += (s, a) => addCard.BorderBrush = _accentBlue;
+            addCard.MouseLeave += (s, a) => addCard.BorderBrush = _inputBorder;
+
+            overwriteCard.MouseLeftButtonUp += (s, a) =>
+            {
+                result = true; // overwrite
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+
+            addCard.MouseLeftButtonUp += (s, a) =>
+            {
+                result = false; // add new
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+
+            dialog.ShowDialog();
+            return result;
+        }
+
+        // ── Step 3: Profile Configuration ─────────────────────────────────
+
+        /// <returns>Tuple of (role, label) or null if cancelled.</returns>
+        private (string role, string label)? ShowProfileConfigDialog(int currentCount)
+        {
+            var titleText = new TextBlock
+            {
+                Text = "New Voice Profile",
+                FontSize = 20,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            var subtitleText = new TextBlock
+            {
+                Text = $"Configure the new profile ({currentCount}/{MaxVoiceProfiles} used)",
+                FontSize = 12,
+                Foreground = _subtleText,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 24)
+            };
+
+            // ── Role radio buttons ────────────────────────────────────────
+            // ── Role radio buttons ────────────────────────────────────────
+            var roleLabel = new TextBlock
+            {
+                Text = "ROLE",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = _subtleText,
+                Margin = new Thickness(0, 0, 0, 8),
+                // LetterSpacing = 0.5,  <-- Удали или закомментируй эту строку
+            };
+
+            var radioUser = new RadioButton
+            {
+                Content = "  User  —  standard access",
+                IsChecked = true,
+                Foreground = Brushes.White,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6),
+                GroupName = "Role"
+            };
+            var radioAdmin = new RadioButton
+            {
+                Content = "  Admin  —  full access",
+                Foreground = Brushes.White,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6),
+                GroupName = "Role"
+            };
+            var radioGuest = new RadioButton
+            {
+                Content = "  Guest  —  limited access",
+                Foreground = Brushes.White,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 0),
+                GroupName = "Role"
+            };
+
+            var roleCard = new Border
+            {
+                Background = _dialogCardBg,
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(16, 14, 16, 14),
+                Margin = new Thickness(0, 0, 0, 18),
+            };
+            var roleStack = new StackPanel();
+            roleStack.Children.Add(radioUser);
+            roleStack.Children.Add(radioAdmin);
+            roleStack.Children.Add(radioGuest);
+            roleCard.Child = roleStack;
+
+            // ── Profile label ─────────────────────────────────────────────
+            // ── Profile label ─────────────────────────────────────────────
+            var labelTitle = new TextBlock
+            {
+                Text = "PROFILE LABEL",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = _subtleText,
+                Margin = new Thickness(0, 0, 0, 8),
+                // LetterSpacing = 0.5,  <-- Удали или закомментируй эту строку
+            };
+            var labelBox = new TextBox
+            {
+                Height = 42,
+                FontSize = 14,
+                Background = _inputBg,
+                Foreground = Brushes.White,
+                BorderBrush = _inputBorder,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(12, 8, 12, 8),
+                Margin = new Thickness(0, 0, 0, 24),
+                Text = "",
+            };
+            // Placeholder via GotFocus / LostFocus
+            string placeholder = "e.g. Yasin, User 2, Mom...";
+            labelBox.Text = placeholder;
+            labelBox.Foreground = _subtleText;
+            labelBox.GotFocus += (s, a) =>
+            {
+                if (labelBox.Text == placeholder)
+                {
+                    labelBox.Text = "";
+                    labelBox.Foreground = Brushes.White;
+                }
+            };
+            labelBox.LostFocus += (s, a) =>
+            {
+                if (string.IsNullOrWhiteSpace(labelBox.Text))
+                {
+                    labelBox.Text = placeholder;
+                    labelBox.Foreground = _subtleText;
+                }
+            };
+
+            // ── Buttons ──────────────────────────────────────────────────
+            var startBtn = MakeDialogButton("Start Recording", _accentBlue, double.NaN, 44);
+            var cancelBtn = MakeDialogButton("Cancel", new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")), double.NaN, 44);
+
+            var btnRow = new Grid { Margin = new Thickness(0) };
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) }); // spacer
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(cancelBtn, 0);
+            Grid.SetColumn(startBtn, 2);
+            btnRow.Children.Add(cancelBtn);
+            btnRow.Children.Add(startBtn);
+
+            // ── Assemble ──────────────────────────────────────────────────
+            var stack = new StackPanel { Margin = new Thickness(32, 28, 32, 28) };
+            stack.Children.Add(titleText);
+            stack.Children.Add(subtitleText);
+            stack.Children.Add(roleLabel);
+            stack.Children.Add(roleCard);
+            stack.Children.Add(labelTitle);
+            stack.Children.Add(labelBox);
+            stack.Children.Add(btnRow);
+
+            var dialog = MakeDialogWindow("Aidy - Profile Setup", 420, stack);
+
+            (string role, string label)? result = null;
+            startBtn.Click += (s, a) =>
+            {
+                string role = radioAdmin.IsChecked == true ? "Admin"
+                            : radioGuest.IsChecked == true ? "Guest"
+                            : "User";
+                string label = (labelBox.Text == placeholder) ? "" : labelBox.Text.Trim();
+                result = (role, label);
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+            cancelBtn.Click += (s, a) =>
+            {
+                dialog.DialogResult = false;
+                dialog.Close();
+            };
+
+            dialog.ShowDialog();
+            return result;
+        }
+
+        // ── Kick off recording ────────────────────────────────────────────
+
+        private void StartEnrollmentRecording(string role, string label)
+        {
+            _isEnrollmentActive = true;
+            _enrollmentConfirmedByPython = false;
+
+            EnrollmentOverlay.Visibility = Visibility.Visible;
+            EnrollmentStatusText.Text = "Aidy is preparing...";
+            EnrollmentProgressText.Text = "";
+
+            string enrollCommand = string.IsNullOrEmpty(label)
+                ? $"enroll_user_force:{role}:"
+                : $"enroll_user_force:{role}:{label}";
+            Debug.WriteLine($"[Enroll] Sending control command: {enrollCommand}");
+            var sent = _bridge.SendControlCommand(enrollCommand);
+            if (!sent)
+            {
+                Debug.WriteLine("[Enroll] SendControlCommand failed — will retry in 3s");
+            }
+
+            // Timeout / retry timer
+            int enrollRetries = 0;
+            _enrollmentTimeoutTimer?.Stop();
+            _enrollmentTimeoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(sent ? 15 : 3) };
+            _enrollmentTimeoutTimer.Tick += (_, __) =>
+            {
+                if (_enrollmentConfirmedByPython || !_isEnrollmentActive)
+                {
+                    _enrollmentTimeoutTimer?.Stop();
+                    return;
+                }
+
+                enrollRetries++;
+                if (enrollRetries <= 2)
+                {
+                    Debug.WriteLine($"[Enroll] Timeout — retrying {enrollCommand} (attempt {enrollRetries})");
+                    EnrollmentStatusText.Text = "Aidy is preparing... (retrying)";
+                    _bridge.SendControlCommand(enrollCommand);
+                    _enrollmentTimeoutTimer!.Interval = TimeSpan.FromSeconds(10);
+                }
+                else
+                {
+                    Debug.WriteLine("[Enroll] Timeout — giving up after retries");
+                    _enrollmentTimeoutTimer?.Stop();
+                    _isEnrollmentActive = false;
+                    EnrollmentOverlay.Visibility = Visibility.Collapsed;
+                    MessageBox.Show(
+                        "Voice enrollment timed out. Please make sure Aidy is running and try again.",
+                        "Enrollment Failed",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            };
+            _enrollmentTimeoutTimer.Start();
+
+            // Safety timeout (90s)
+            var safetyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(90) };
+            safetyTimer.Tick += (_, __) =>
+            {
+                safetyTimer.Stop();
+                if (_isEnrollmentActive)
+                {
+                    Debug.WriteLine("[Enroll] Safety timeout (90s) — force-closing overlay.");
+                    _enrollmentTimeoutTimer?.Stop();
+                    _isEnrollmentActive = false;
+                    _enrollmentConfirmedByPython = false;
+                    EnrollmentOverlay.Visibility = Visibility.Collapsed;
+                }
+            };
+            safetyTimer.Start();
+        }
+
+        private void CancelEnrollment_Click(object sender, RoutedEventArgs e)
+        {
+            Debug.WriteLine($"[Enroll] CancelEnrollment_Click: confirmed={_enrollmentConfirmedByPython}, active={_isEnrollmentActive}");
+
+            if (!_isEnrollmentActive)
+            {
+                Debug.WriteLine("[Enroll] Cancel ignored: enrollment not active.");
+                return;
+            }
+
+            // User cancelled manually — clear flag and hide immediately.
+            _isEnrollmentActive = false;
+            EnrollmentOverlay.Visibility = Visibility.Collapsed;
+
+            // Only send the cancel command if Python has acknowledged the enrollment.
+            // This prevents a race where cancel_enrollment arrives before Python even starts.
+            if (_enrollmentConfirmedByPython)
+            {
+                _enrollmentConfirmedByPython = false;
+                Debug.WriteLine("[Enroll] Sending cancel_enrollment (Python had confirmed start).");
+                _bridge.SendControlCommand("cancel_enrollment");
+            }
+            else
+            {
+                Debug.WriteLine("[Enroll] Cancel suppressed: Python has not confirmed ENROLL_STARTED yet.");
+            }
+        }
+
+        private void DeleteVoiceUser_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int userId)
+            {
+                var entry = _vm.VoiceUsers.FirstOrDefault(u => u.Id == userId);
+                string label = entry?.Label ?? $"ID {userId}";
+
+                var result = MessageBox.Show(
+                    $"Delete voice profile '{label}'?",
+                    "Confirm Deletion",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (result != MessageBoxResult.Yes) return;
+
+                Debug.WriteLine($"[Voice] Deleting voice user id={userId}");
+                _bridge.SendControlCommand($"delete_voice_user:{userId}");
+            }
+        }
+
+        private void CustomModeSlot_Click(object sender, RoutedEventArgs e)
+        {
+            Debug.WriteLine("[CustomMode] CustomModeSlot_Click fired");
+            _vm.AppendLogLine("[CustomMode] Slot assign click");
+
+            if (sender is not Button { Tag: int idx }) return;
+            if (idx < 0 || idx >= _vm.CustomModeSlots.Count) return;
+
+            _vm.AppendLogLine($"[CustomMode] Opening picker for slot {idx}");
+            var picker = new CustomModePickerWindow(idx) { Owner = this };
+            if (picker.ShowDialog() == true && picker.Result is { } result)
+            {
+                var slot = _vm.CustomModeSlots[idx];
+                slot.ActionType  = result.ActionType;
+                slot.Target      = result.Target;
+                slot.DisplayName = result.DisplayName;
+                _vm.AppendLogLine($"[CustomMode] Slot {idx} assigned: {result.ActionType}|{result.Target}|{result.DisplayName}");
+                SaveCurrentConfig();
+            }
+            else
+            {
+                _vm.AppendLogLine("[CustomMode] Picker cancelled or no result");
+            }
+        }
+
+        private void CustomModeSlotClear_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { Tag: int idx }) return;
+            if (idx < 0 || idx >= _vm.CustomModeSlots.Count) return;
+
+            // Extra slots (beyond the base 3): remove entirely instead of clearing
+            if (idx >= MainViewModel.CustomModeSlotsMin)
+            {
+                _vm.CustomModeSlots.RemoveAt(idx);
+                // Re-index remaining slots so badge numbers stay correct
+                for (int i = 0; i < _vm.CustomModeSlots.Count; i++)
+                {
+                    var s = _vm.CustomModeSlots[i];
+                    if (s.Index != i)
+                    {
+                        // Replace with a new VM at the correct index, preserving data
+                        var replacement = new CustomModeSlotViewModel(i);
+                        replacement.Apply(s.ToModel());
+                        _vm.CustomModeSlots[i] = replacement;
+                    }
+                }
+                _vm.RefreshCanAddCustomSlot();
+            }
+            else
+            {
+                _vm.CustomModeSlots[idx].Clear();
+            }
+            SaveCurrentConfig();
+        }
+
+        private void CustomModeAddSlot_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vm.CustomModeSlots.Count >= MainViewModel.CustomModeSlotsMax) return;
+            var newIndex = _vm.CustomModeSlots.Count;
+            _vm.CustomModeSlots.Add(new CustomModeSlotViewModel(newIndex));
+            _vm.RefreshCanAddCustomSlot();
+            SaveCurrentConfig();
+        }
+
+        private void CustomSlotExecute_Click(object sender, RoutedEventArgs e)
+        {
+            Debug.WriteLine($"[CustomMode] CustomSlotExecute_Click fired, sender={sender?.GetType().Name}");
+            _vm.AppendLogLine("[CustomMode] CustomSlotExecute_Click fired");
+
+            if (sender is not Button { Tag: int idx })
+            {
+                Debug.WriteLine("[CustomMode] sender is not Button with int Tag — aborting");
+                _vm.AppendLogLine("[CustomMode] ERROR: sender is not Button with int Tag");
+                return;
+            }
+
+            Debug.WriteLine($"[CustomMode] slot index={idx}, slots count={_vm.CustomModeSlots.Count}");
+            _vm.AppendLogLine($"[CustomMode] slot index={idx}");
+
+            if (idx < 0 || idx >= _vm.CustomModeSlots.Count)
+            {
+                _vm.AppendLogLine($"[CustomMode] ERROR: index {idx} out of range");
+                return;
+            }
+
+            var slot = _vm.CustomModeSlots[idx];
+            if (slot.IsEmpty)
+            {
+                _vm.AppendLogLine("[CustomMode] slot is empty — nothing to execute");
+                return;
+            }
+
+            var model = slot.ToModel();
+            var payload = $"{model.ActionType}|{model.Target}|{model.DisplayName}";
+            _vm.AppendLogLine($"[CustomMode] sending execute_slot:{payload}");
+            var sent = _bridge.SendControlCommand($"execute_slot:{payload}");
+            _vm.AppendLogLine($"[CustomMode] SendControlCommand returned: {sent}");
+        }
+
         private void BrowseAidiFile_Click(object sender, RoutedEventArgs e)
         {
+            string? initialDir = null;
+            if (!string.IsNullOrWhiteSpace(_vm.AidiFilePath))
+            {
+                var existing = Path.GetDirectoryName(_vm.AidiFilePath);
+                if (!string.IsNullOrEmpty(existing) && Directory.Exists(existing))
+                    initialDir = existing;
+            }
+
             var dialog = new OpenFileDialog
             {
                 Title = "Select AIDI File",
@@ -435,7 +1453,8 @@ namespace WpfApp1.Views
                 CheckPathExists = true,
                 DereferenceLinks = true,
                 Multiselect = false,
-                Filter = "All files (*.*)|*.*"
+                Filter = "All files (*.*)|*.*",
+                InitialDirectory = initialDir ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             };
 
             if (dialog.ShowDialog(this) == true)
@@ -576,6 +1595,25 @@ namespace WpfApp1.Views
             }
         }
 
+        private DateTime _lastDeviceRefresh = DateTime.MinValue;
+
+        private void RefreshAudioDevices()
+        {
+            // Debounce: WM_DEVICECHANGE fires multiple times per plug/unplug event.
+            var now = DateTime.UtcNow;
+            if ((now - _lastDeviceRefresh).TotalMilliseconds < 500)
+                return;
+            _lastDeviceRefresh = now;
+
+            var inputDevices = _audioDeviceService.GetInputDevices();
+            var outputDevices = _audioDeviceService.GetOutputDevices();
+            _vm.SetAudioDevices(
+                inputDevices,
+                outputDevices,
+                _vm.SelectedMicrophoneDevice,
+                _vm.SelectedOutputDevice);
+        }
+
         private void SaveCurrentConfig()
         {
             var hotkey = ParsePushToTalkKey(_vm.PushToTalkKey);
@@ -585,6 +1623,7 @@ namespace WpfApp1.Views
                 PushToTalkEnabled = _vm.PushToTalkEnabled,
                 PushToTalkKey = hotkey.ToString(),
                 AutoStartEnabled = _vm.AutoStartEnabled,
+                VoiceIdEnabled = _vm.VoiceIdEnabled,
                 Audio = new AudioConfig
                 {
                     Microphone = _vm.SelectedMicrophoneDevice,
@@ -599,6 +1638,28 @@ namespace WpfApp1.Views
                     FilePath = normalizedAidiPath,
                     Volume = _vm.AidiVolume,
                 },
+                CustomMode = new CustomModeConfig
+                {
+                    Enabled = _vm.CustomModeEnabled,
+                    Slots   = _vm.CustomModeSlots.Select(s => s.ToModel()).ToArray(),
+                },
+                VoiceSensitivity = new VoiceSensitivityConfig
+                {
+                    VadThreshold = _vm.VadThreshold,
+                    SilenceMs = _vm.SilenceMs,
+                    MinSpeechMs = _vm.MinSpeechMs,
+                },
+                MouseControl = new MouseControlConfig
+                {
+                    MovePx = _vm.MouseMovePx,
+                    ScrollClicks = _vm.MouseScrollClicks,
+                    ScrollStep = _vm.MouseScrollStep,
+                },
+                PreferredApps = new PreferredAppsConfig
+                {
+                    Browser = LookupAppId(_browserDisplayToId, _vm.PreferredBrowser),
+                    MusicApp = LookupAppId(_musicDisplayToId, _vm.PreferredMusicApp),
+                },
             });
         }
 
@@ -612,6 +1673,93 @@ namespace WpfApp1.Views
             {
                 Debug.WriteLine($"[Config] save failed: {ex}");
             }
+        }
+
+        // ── Preferred Apps: dynamic population from apps.json ──────
+
+        private void PopulatePreferredAppOptions(string baseDir)
+        {
+            _browserDisplayToId.Clear();
+            _musicDisplayToId.Clear();
+            _vm.BrowserOptions.Clear();
+            _vm.MusicAppOptions.Clear();
+
+            _vm.BrowserOptions.Add(SystemDefaultLabel);
+            _vm.MusicAppOptions.Add(SystemDefaultLabel);
+            _browserDisplayToId[SystemDefaultLabel] = string.Empty;
+            _musicDisplayToId[SystemDefaultLabel] = string.Empty;
+
+            var appsJsonPath = Path.Combine(baseDir, "apps.json");
+            if (!File.Exists(appsJsonPath)) return;
+
+            try
+            {
+                var json = File.ReadAllText(appsJsonPath);
+                var root = JsonNode.Parse(json) as JsonObject;
+                var apps = root?["apps"] as JsonArray;
+                if (apps == null) return;
+
+                foreach (var node in apps)
+                {
+                    if (node is not JsonObject app) continue;
+                    var id = app["id"]?.GetValue<string>()?.Trim() ?? "";
+                    var category = app["category"]?.GetValue<string>()?.Trim().ToLowerInvariant() ?? "";
+                    if (string.IsNullOrEmpty(id)) continue;
+
+                    var displayName = FormatAppDisplayName(id);
+
+                    if (category == "browser")
+                    {
+                        _browserDisplayToId[displayName] = id;
+                        _vm.BrowserOptions.Add(displayName);
+                    }
+                    else if (category == "music")
+                    {
+                        _musicDisplayToId[displayName] = id;
+                        _vm.MusicAppOptions.Add(displayName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[PreferredApps] apps.json parse failed: {ex}");
+            }
+        }
+
+        private static string FormatAppDisplayName(string appId)
+        {
+            // "yandex_browser" → "Yandex Browser", "chrome" → "Chrome"
+            var parts = appId.Split('_');
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Length > 0)
+                    parts[i] = char.ToUpper(parts[i][0]) + parts[i].Substring(1);
+            }
+            return string.Join(" ", parts);
+        }
+
+        private static string ResolvePreferredSelection(
+            System.Collections.ObjectModel.ObservableCollection<string> options,
+            Dictionary<string, string> displayToId,
+            string configId)
+        {
+            if (string.IsNullOrEmpty(configId))
+                return SystemDefaultLabel;
+
+            foreach (var kvp in displayToId)
+            {
+                if (string.Equals(kvp.Value, configId, StringComparison.OrdinalIgnoreCase))
+                    return kvp.Key;
+            }
+
+            return options.Count > 0 ? options[0] : SystemDefaultLabel;
+        }
+
+        private static string LookupAppId(Dictionary<string, string> displayToId, string? displayName)
+        {
+            if (string.IsNullOrEmpty(displayName) || displayName == SystemDefaultLabel)
+                return string.Empty;
+            return displayToId.TryGetValue(displayName, out var id) ? id : string.Empty;
         }
 
         private static Key ParsePushToTalkKey(string? raw)
@@ -642,6 +1790,36 @@ namespace WpfApp1.Views
             {
                 return string.Empty;
             }
+        }
+
+        private static void CloseOpenComboBoxes(DependencyObject root)
+        {
+            if (root == null) return;
+            int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+                if (child is ComboBox cb && cb.IsDropDownOpen)
+                    cb.IsDropDownOpen = false;
+                else
+                    CloseOpenComboBoxes(child);
+            }
+        }
+
+        private static string GetProjectRootDirectory(string baseDir)
+        {
+            // Walk up, skipping typical build output segments (bin, obj, Debug, Release, net*-*)
+            var buildSegments = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                { "bin", "obj", "Debug", "Release", "x64", "x86", "AnyCPU" };
+            var dir = new DirectoryInfo(baseDir.TrimEnd(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            while (dir?.Parent != null &&
+                   (buildSegments.Contains(dir.Name) ||
+                    (dir.Name.StartsWith("net", StringComparison.OrdinalIgnoreCase) && dir.Name.Contains('.'))))
+            {
+                dir = dir.Parent;
+            }
+            return dir?.FullName ?? baseDir;
         }
 
         private static string ResolvePythonScriptPath(string baseDir)
@@ -899,6 +2077,16 @@ namespace WpfApp1.Views
                 EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
             };
 
+            _glowCommandListening = new DoubleAnimation
+            {
+                From = 1.00,
+                To = 1.10,
+                Duration = new Duration(TimeSpan.FromSeconds(0.8)),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+
             _waveOff = new DoubleAnimation { To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(180)) };
 
             _waveSpeaking = new DoubleAnimation
@@ -919,6 +2107,40 @@ namespace WpfApp1.Views
                 AutoReverse = true,
                 RepeatBehavior = RepeatBehavior.Forever
             };
+        }
+
+        // ===== Emblem VAD animation =====
+        private void SetEmblemActive(bool active)
+        {
+            // Only animate when emblem is actually visible (LISTENING / COMMAND_LISTENING states)
+            if (!_emblemVisible)
+                return;
+
+            if (active)
+            {
+                if (_emblemSb != null)
+                    return; // already running
+                if (Resources["SB_Emblem_Active"] is Storyboard sb)
+                {
+                    _emblemSb = sb;
+                    sb.Begin(this, true);
+                }
+            }
+            else
+            {
+                if (_emblemSb != null)
+                {
+                    _emblemSb.Stop(this);
+                    _emblemSb = null;
+                }
+                // Reset emblem to neutral
+                EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+                EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+                EmblemScale.ScaleX = 1; EmblemScale.ScaleY = 1;
+                EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, null);
+                EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.BlurRadiusProperty, null);
+                EmblemGlow.Opacity = 0; EmblemGlow.BlurRadius = 0;
+            }
         }
 
         // ===== Ring storyboard runner =====
@@ -952,22 +2174,78 @@ namespace WpfApp1.Views
 
         private void ApplyState(AidyState state)
         {
+            UpdateAudioWaveState(state);
             // stop previous (wave/rotate/glow)
+            OuterGlow.Visibility = Visibility.Visible;
+            OuterGlow.BeginAnimation(OpacityProperty, null);
+            OuterGlow.Opacity = 1;
+
             RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
             OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
             OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
             WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
             WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+            Wave.BeginAnimation(OpacityProperty, null);
+            Wave.Opacity = 1;
             Wave.Visibility = Visibility.Visible;
             WaitingHotkeySleep.Visibility = Visibility.Collapsed;
-            ListeningMic.Visibility = Visibility.Collapsed;
             SpeakingWave.Visibility = Visibility.Collapsed;
             FollowUpWave.Visibility = Visibility.Collapsed;
+            // Reset denied cross animations
+            DeniedCross.BeginAnimation(OpacityProperty, null);
+            DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+            DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+            DeniedCross.Opacity = 1;
+            DeniedCrossScale.ScaleX = 1; DeniedCrossScale.ScaleY = 1;
+            DeniedCross.Visibility = Visibility.Collapsed;
+            CenterEmblem.Visibility = Visibility.Collapsed;
+            _emblemVisible = false;
+            
+            if (_emblemSb != null) { _emblemSb.Stop(this); _emblemSb = null; }
+            EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+            EmblemScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+            EmblemScale.ScaleX = 1; EmblemScale.ScaleY = 1;
+            EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, null);
+            EmblemGlow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.BlurRadiusProperty, null);
+            EmblemGlow.Opacity = 0; EmblemGlow.BlurRadius = 0;
             StopWaveformAnimation();
 
             // ===== Ring storyboard by state =====
             switch (state)
             {
+                // ... (оставь все остальные case без изменений, кроме этих двух ниже) ...
+
+                case AidyState.AccessDenied:
+                    System.Media.SystemSounds.Hand.Play();
+                    // Fade out the blue glow & wave smoothly
+                    OuterGlow.BeginAnimation(OpacityProperty,
+                        new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(250))));
+                    Wave.BeginAnimation(OpacityProperty,
+                        new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(200))));
+                    // Show denied cross with fade-in + scale pop
+                    DeniedCross.Visibility = Visibility.Visible;
+                    DeniedCross.Opacity = 0;
+                    DeniedCross.BeginAnimation(OpacityProperty,
+                        new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300)))
+                        { EasingFunction = new SineEase { EasingMode = EasingMode.EaseOut } });
+                    DeniedCrossScale.ScaleX = 0.3;
+                    DeniedCrossScale.ScaleY = 0.3;
+                    var deniedPopX = new DoubleAnimation(0.3, 1.0, new Duration(TimeSpan.FromMilliseconds(350)))
+                    { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 4 } };
+                    var deniedPopY = new DoubleAnimation(0.3, 1.0, new Duration(TimeSpan.FromMilliseconds(350)))
+                    { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 4 } };
+                    DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, deniedPopX);
+                    DeniedCrossScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, deniedPopY);
+                    StartRing("SB_Ring_AccessDenied");
+                    break;
+
+                case AidyState.Error:
+                    OuterGlow.Visibility = Visibility.Collapsed; // Прячем синий фон!
+                    Wave.BeginAnimation(OpacityProperty, _waveOff);
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    break;
+                    
+                // ... (остальные case тоже без изменений) ...
                 case AidyState.Starting:
                     StartRing("SB_Ring_Idle");
                     break;
@@ -978,7 +2256,7 @@ namespace WpfApp1.Views
                     StartRing("SB_Ring_Listening");
                     break;
                 case AidyState.CommandListening:
-                    StartRing("SB_Ring_Listening");
+                    StartRing("SB_Ring_CommandListening");
                     break;
                 case AidyState.Processing:
                     StartRing("SB_Ring_Processing");
@@ -992,6 +2270,12 @@ namespace WpfApp1.Views
                 case AidyState.FollowUp:
                     StartRing("SB_Ring_FollowUp");
                     break;
+                case AidyState.GrantRole:
+                    StartRing("SB_Ring_GrantRole");
+                    break;
+                case AidyState.GrantDuration:
+                    StartRing("SB_Ring_GrantDuration");
+                    break;
 
                 case AidyState.Executing:
                     StartRing("SB_Ring_Executing");
@@ -1001,9 +2285,6 @@ namespace WpfApp1.Views
                     break;
                 case AidyState.Warning:
                     StartRing("SB_Ring_Warning");
-                    break;
-                case AidyState.Error:
-                    StartRing("SB_Ring_Error");
                     break;
                 case AidyState.Offline:
                     StartRing("SB_Ring_Offline");
@@ -1045,13 +2326,26 @@ namespace WpfApp1.Views
                     break;
 
                 case AidyState.Listening:
-                case AidyState.CommandListening:
                     Wave.Opacity = 1;
                     Wave.Visibility = Visibility.Collapsed;
-                    ListeningMic.Visibility = Visibility.Visible;
+                    CenterEmblem.Visibility = Visibility.Visible;
+                    _emblemVisible = true;
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+
+                case AidyState.CommandListening:
+                    Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
+                    CenterEmblem.Visibility = Visibility.Visible;
+                    _emblemVisible = true;
+                    // Faster rotation + bigger glow = "I heard you, speak now!"
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateFast);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowCommandListening);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowCommandListening);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
                     break;
@@ -1067,6 +2361,7 @@ namespace WpfApp1.Views
 
                 case AidyState.Speaking:
                     Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
                     SpeakingWave.Visibility = Visibility.Visible;
                     StartWaveformAnimation();
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
@@ -1078,6 +2373,9 @@ namespace WpfApp1.Views
 
                 case AidyState.Confirming:
                     Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
+                    FollowUpWave.Visibility = Visibility.Visible;
+                    StartWaveformAnimation();
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
@@ -1088,6 +2386,25 @@ namespace WpfApp1.Views
                     Wave.Opacity = 1;
                     FollowUpWave.Visibility = Visibility.Visible;
                     StartWaveformAnimation();
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+                case AidyState.GrantRole:
+                    Wave.Opacity = 1;
+                    Wave.Visibility = Visibility.Collapsed;
+                    CenterEmblem.Visibility = Visibility.Visible;
+                    _emblemVisible = true;
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
+                    OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
+                    WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+                case AidyState.GrantDuration:
+                    Wave.Opacity = 1;
                     RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _glowActive);
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
@@ -1119,6 +2436,11 @@ namespace WpfApp1.Views
                     OuterGlowScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _glowActive);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, _waveProcessing);
                     WaveScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, _waveProcessing);
+                    break;
+
+                case AidyState.AccessDenied:
+                    // Wave & DeniedCross already animated in the first switch
+                    RingRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, _rotateSlow);
                     break;
 
                 case AidyState.Error:
@@ -1207,8 +2529,13 @@ namespace WpfApp1.Views
                 OrbScale.ScaleY = _compactOrbScale;
 
                 MinimizeButton.Visibility = Visibility.Visible;
-                MaximizeButton.Visibility = Visibility.Collapsed;
-                MaximizeToCloseSpacer.Visibility = Visibility.Collapsed;
+
+                CompactToggleButton.Width = 36;
+                CompactToggleButton.Height = 26;
+                MinimizeButton.Width = 32;
+                MinimizeButton.Height = 26;
+                CloseButton.Width = 32;
+                CloseButton.Height = 26;
 
                 CompactIconInward.Visibility = Visibility.Collapsed;
                 CompactIconOutward.Visibility = Visibility.Visible;
@@ -1248,8 +2575,13 @@ namespace WpfApp1.Views
             OrbScale.ScaleY = _normalOrbScale;
 
             MinimizeButton.Visibility = Visibility.Visible;
-            MaximizeButton.Visibility = Visibility.Visible;
-            MaximizeToCloseSpacer.Visibility = Visibility.Visible;
+
+            CompactToggleButton.Width = 52;
+            CompactToggleButton.Height = 34;
+            MinimizeButton.Width = 44;
+            MinimizeButton.Height = 32;
+            CloseButton.Width = 44;
+            CloseButton.Height = 32;
 
             CompactIconInward.Visibility = Visibility.Visible;
             CompactIconOutward.Visibility = Visibility.Collapsed;
@@ -1268,13 +2600,31 @@ namespace WpfApp1.Views
                 if (e.ButtonState == MouseButtonState.Pressed) DragMove();
                 return;
             }
-            if (e.ClickCount == 2) { ToggleMaximize(); return; }
             if (e.ButtonState == MouseButtonState.Pressed) DragMove();
         }
 
-        private void Close_Click(object sender, RoutedEventArgs e) => Close();
+        private void Close_Click(object sender, RoutedEventArgs e)
+        {
+            // 1. Мгновенно прячем окно (оно пропадет с экрана и не будет мозолить глаза)
+            this.Hide();
+
+            // 2. Убиваем Питон и всё остальное в фоновом режиме, чтобы не вешать интерфейс
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    _pushToTalkHotkey?.Dispose();
+                    _bridge?.Dispose();
+                }
+                catch { }
+                finally
+                {
+                    // 3. Жестко завершаем процесс в Windows
+                    Environment.Exit(0);
+                }
+            });
+        }
         private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-        private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
 
         // =========================
         // NAVIGATION (Sidebar)
@@ -1282,7 +2632,12 @@ namespace WpfApp1.Views
         private void NavAidy_Click(object sender, RoutedEventArgs e) => ShowPage("AIDY");
         private void NavCommands_Click(object sender, RoutedEventArgs e) => ShowPage("COMMANDS");
         private void NavContacts_Click(object sender, RoutedEventArgs e) => ShowPage("CONTACTS");
-        private void NavSettings_Click(object sender, RoutedEventArgs e) => ShowPage("SETTINGS");
+        private void NavSettings_Click(object sender, RoutedEventArgs e)
+        {
+            ShowPage("SETTINGS");
+            if (_bridgeStarted && _vm.VoiceIdEnabled)
+                _bridge.SendControlCommand("list_voice_users");
+        }
 
         private void ShowPage(string page)
         {
@@ -1316,12 +2671,6 @@ namespace WpfApp1.Views
             }
         }
 
-        private void ToggleMaximize()
-        {
-            if (_isCompactMode) return;
-            WindowState = (WindowState == WindowState.Maximized) ? WindowState.Normal : WindowState.Maximized;
-        }
-
         private void ClearWakeDebug_Click(object sender, RoutedEventArgs e)
         {
             _vm.ClearWakeDebugLog();
@@ -1334,5 +2683,63 @@ namespace WpfApp1.Views
                 tb.ScrollToEnd();
             }
         }
+
+        // =========================
+        // ПЛАВНАЯ ПРОКРУТКА НАСТРОЕК
+        // =========================
+        private void SettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (sender is not ScrollViewer scv)
+            {
+                return;
+            }
+
+            // Close any open ComboBox dropdowns before scrolling so they don't float out of place.
+            CloseOpenComboBoxes(SettingsPage);
+
+            e.Handled = true;
+
+            // Precision touchpad дает частые мелкие delta (<120), мышь обычно кратна 120.
+            var isTouchpadLikeInput = Math.Abs(e.Delta) < 120;
+
+            const double touchpadPixelsPerDeltaUnit = 1.2;
+            const double mousePixelsPerDeltaUnit = 1.2;
+
+            if (_smoothScrollTargetOffset < 0d || _smoothScrollTargetOffset > scv.ScrollableHeight)
+            {
+                _smoothScrollTargetOffset = scv.VerticalOffset;
+            }
+
+            var pixelsPerDeltaUnit = isTouchpadLikeInput
+                ? touchpadPixelsPerDeltaUnit
+                : mousePixelsPerDeltaUnit;
+            var deltaPixels = -(e.Delta * pixelsPerDeltaUnit);
+            _smoothScrollTargetOffset = Math.Clamp(
+                _smoothScrollTargetOffset + deltaPixels,
+                0d,
+                scv.ScrollableHeight);
+
+            // Для тачпада не анимируем: иначе из-за частых событий появляется "вязкость"/подлагивание.
+            if (isTouchpadLikeInput)
+            {
+                BeginAnimation(CurrentScrollOffsetProperty, null);
+                CurrentScrollOffset = _smoothScrollTargetOffset;
+                scv.ScrollToVerticalOffset(_smoothScrollTargetOffset);
+                return;
+            }
+
+            CurrentScrollOffset = scv.VerticalOffset;
+
+            var animation = new DoubleAnimation
+            {
+                To = _smoothScrollTargetOffset,
+                Duration = TimeSpan.FromMilliseconds(140),
+                EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            animation.Completed += (_, __) => CurrentScrollOffset = _smoothScrollTargetOffset;
+            BeginAnimation(CurrentScrollOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+        }
+
     }
 }

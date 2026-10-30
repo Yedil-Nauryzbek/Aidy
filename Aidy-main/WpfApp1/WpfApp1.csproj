@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
@@ -6,18 +6,19 @@
 		<UseWPF>true</UseWPF>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
+		<ApplicationIcon>Assets\logo.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="PythonCore\**\*">
+		<PackageReference Include="System.DirectoryServices.AccountManagement" Version="8.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="PythonCore\**\*" Exclude="PythonCore\**\__pycache__\**;PythonCore\**\*.pyc;PythonCore\**\vosk-model*\**">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 
-		<Content Include="Api\**\*">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-
-		<Content Include="vosk-model-small-en-us-0.15\**\*">
+		<Content Include="Api\**\*" Exclude="Api\**\__pycache__\**;Api\**\*.pyc;Api\**\vosk-model*\**">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 
@@ -39,12 +40,19 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Folder Include="Assets\" />
+		<None Remove="Assets\SplashOverlay.mp4" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Folder Include="Resources\" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<Resource Include="logo.png" />
+		<Resource Include="Assets\logo.png" />
+		<Resource Include="Assets\emblem.png" />
+		<Content Include="Assets\SplashOverlay.mp4">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 
 </Project>

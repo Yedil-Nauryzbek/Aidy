@@ -3,6 +3,7 @@ import json
 import time
 import subprocess
 import re
+import winreg
 from urllib.parse import urlparse
 
 from .logui import info, warn
@@ -18,13 +19,36 @@ DEFAULT_BROWSER_PROCESSES = (
     "browser.exe",
 )
 
+GENERIC_BROWSER_ALIASES = {'browser', 'the browser', 'my browser', 'web browser', 'default browser'}
+
+
+def default_browser_app():
+    """Resolve the user's HTTPS association, not a hard-coded Chrome alias."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                r'Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice') as key:
+            progid = winreg.QueryValueEx(key, 'ProgId')[0]
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, progid + r'\shell\open\command') as key:
+            command = os.path.expandvars(winreg.QueryValueEx(key, '')[0])
+        match = re.match(r'^\s*"([^"]+\.exe)"|^\s*([^\s]+\.exe)', command, re.I)
+        if not match:
+            return None
+        executable = match.group(1) or match.group(2)
+        process = os.path.basename(executable).lower()
+        if process not in DEFAULT_BROWSER_PROCESSES or not os.path.isfile(executable):
+            return None
+        return dict(id='browser', type='exe', aliases=sorted(GENERIC_BROWSER_ALIASES),
+                    target=executable, process=process, args=[], browser_processes=[])
+    except OSError:
+        return None
+
 
 def extract_app_name(text: str) -> str:
     t = (text or "").strip().lower()
     t = " ".join(t.split())
     prefixes = (
-        "open ",
         "open up ",
+        "open ",
         "launch ",
         "start ",
         "run ",
@@ -93,6 +117,15 @@ def load_apps_config(base_dir: str):
                 "browser_processes": browser_processes,
             })
 
+        browser = default_browser_app()
+        if browser is not None:
+            for app in out:
+                app['aliases'] = [alias for alias in app['aliases'] if alias not in GENERIC_BROWSER_ALIASES]
+            # An explicit generic entry is updated to the same default used for
+            # opening URLs; named Chrome/Edge entries retain their own targets.
+            out = [app for app in out if app['id'] != 'browser']
+            out.append(browser)
+            info(f"Default browser target: {browser['process']}")
         info(f"Apps loaded: {len(out)} (apps.json)")
         return out
 
@@ -118,26 +151,32 @@ def find_app(apps: list, name: str):
 
     q_compact = q.replace(" ", "")
 
-    for a in apps:
-        aliases = [_normalize_app_text(x) for x in (a.get("aliases") or [])]
-        if q in aliases:
-            return a
+    # Match the complete target. Substring matching made Discord's alias "ds"
+    # match "closedsteam" and opened Discord for "closed steam".
+    matches = []
+    for app in apps:
+        aliases = [_normalize_app_text(x) for x in
+                   [app.get("id") or "", *(app.get("aliases") or [])]]
+        if any(alias and (q == alias or q_compact == alias.replace(" ", ""))
+               for alias in aliases):
+            matches.append(app)
+    return matches[0] if len(matches) == 1 else None
 
-    for a in apps:
-        app_id = _normalize_app_text(a.get("id") or "")
-        if q == app_id:
-            return a
 
-    for a in apps:
-        aliases = [_normalize_app_text(x) for x in (a.get("aliases") or [])]
-        for al in aliases:
-            if not al:
-                continue
-            al_compact = al.replace(" ", "")
-            if al in q or q in al or al_compact in q_compact or q_compact in al_compact:
-                return a
-
-    return None
+def normalize_app_command(text: str, apps: list) -> str:
+    """Correct a command verb only when its complete app target is known."""
+    text = " ".join((text or "").lower().split()).strip(".!?, ")
+    candidate = re.sub(r"^(?:(?:can|could|would) you |please )+", "", text)
+    candidate = re.sub(r"(?: please| for me| now)+$", "", candidate)
+    match = re.fullmatch(r"(open up|open|launch|start|run|go to|visit|show|close|closed|clothes|cloze|quit|exit|kill|stop) (.+)", candidate)
+    if not match:
+        return text
+    verb, target = match.groups()
+    app = find_app(apps, target) or find_app(apps, re.sub(r"^(?:the|my) ", "", target))
+    if app is None:
+        return text
+    action = "close" if verb in {"close", "closed", "clothes", "cloze", "quit", "exit", "kill", "stop"} else "open"
+    return f"{action} {app['id']}"
 
 
 def launch_app(app: dict) -> bool:

@@ -1,8 +1,13 @@
-﻿import ctypes
+from __future__ import annotations
+import ctypes
+import ctypes.wintypes
 import subprocess
 import re
+import time
 
 import pyautogui
+import pythoncom
+import win32com.client
 
 try:
     from ctypes import POINTER, cast
@@ -37,8 +42,8 @@ def set_volume_percent(p: int) -> bool:
 def volume_steps(up: bool, steps: int, presses_per_step: int = 2):
     key = "volumeup" if up else "volumedown"
     total_presses = max(1, steps) * max(1, presses_per_step)
-    for _ in range(total_presses):
-        pyautogui.press(key)
+    # Avoid PyAutoGUI's 100 ms post-call pause for every individual press.
+    pyautogui.press(key, presses=total_presses, interval=0.01, _pause=False)
 
 
 def brightness_steps(up: bool, steps: int, step_percent: int = 10):
@@ -46,23 +51,28 @@ def brightness_steps(up: bool, steps: int, step_percent: int = 10):
     delta = safe_steps * max(1, step_percent)
     if not up:
         delta = -delta
-    ps_command = (
-        "$m=Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods;"
-        "$b=Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness;"
-        "$c=[int]$b.CurrentBrightness;"
-        f"$t=[Math]::Max(0,[Math]::Min(100,$c+({delta})));"
-        "$m.WmiSetBrightness(1,$t)|Out-Null"
-    )
+    pythoncom.CoInitialize()
     try:
-        subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_command],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        return True
+        # Call the same Windows brightness provider in-process, with no shell
+        # startup or one-second brightness transition on each request.
+        service = win32com.client.Dispatch("WbemScripting.SWbemLocator").ConnectServer('.', r'root\WMI')
+        levels = {str(m.InstanceName): int(m.CurrentBrightness) for m in
+                  service.ExecQuery('SELECT * FROM WmiMonitorBrightness WHERE Active=TRUE')}
+        results = []
+        for monitor in service.ExecQuery('SELECT * FROM WmiMonitorBrightnessMethods WHERE Active=TRUE'):
+            current = levels.get(str(monitor.InstanceName))
+            if current is None:
+                continue
+            parameters = monitor.Methods_('WmiSetBrightness').InParameters.SpawnInstance_()
+            parameters.Properties_('Timeout').Value = 0
+            parameters.Properties_('Brightness').Value = max(0, min(100, current + delta))
+            result = monitor.ExecMethod_('WmiSetBrightness', parameters)
+            results.append(int(result.Properties_('ReturnValue').Value) == 0)
+        return bool(results) and all(results)
     except Exception:
         return False
+    finally:
+        pythoncom.CoUninitialize()
 
 
 def show_desktop():
@@ -155,6 +165,29 @@ def open_task_manager():
         return False
 
 
+def _get_process_name_by_pid(pid: int) -> str | None:
+    """Get process executable name via kernel32 (no PowerShell subprocess)."""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    MAX_PATH = 260
+    try:
+        kernel32 = ctypes.windll.kernel32
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return None
+        try:
+            buf = ctypes.create_unicode_buffer(MAX_PATH)
+            size = ctypes.wintypes.DWORD(MAX_PATH)
+            ok = kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+            if ok and buf.value:
+                import os as _os
+                return _os.path.splitext(_os.path.basename(buf.value))[0]
+            return None
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:
+        return None
+
+
 def get_active_window_info() -> dict | None:
     try:
         user32 = ctypes.windll.user32
@@ -174,19 +207,60 @@ def get_active_window_info() -> dict | None:
         if pid_val <= 0:
             return None
 
-        ps_cmd = f"(Get-Process -Id {pid_val}).ProcessName"
-        out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", ps_cmd],
-            stderr=subprocess.DEVNULL,
-            text=True
-        )
-        proc = (out or "").strip()
+        proc = _get_process_name_by_pid(pid_val)
         if not proc:
             return None
 
         return {"pid": pid_val, "process": proc, "title": title}
     except Exception:
         return None
+
+
+MOUSE_MOVE_PX = 500
+MOUSE_SCROLL_CLICKS = 150
+MOUSE_SCROLL_STEP = 15
+MOUSE_SCROLL_DELAY = 0.002
+
+def _smooth_scroll(clicks: int):
+    direction = 1 if clicks > 0 else -1
+    remaining = abs(clicks)
+    while remaining > 0:
+        batch = min(MOUSE_SCROLL_STEP, remaining)
+        pyautogui.scroll(batch * direction)
+        remaining -= batch
+        if remaining > 0:
+            time.sleep(MOUSE_SCROLL_DELAY)
+
+def execute_mouse_command(text: str) -> str | None:
+    t = " ".join((text or "").strip().lower().split())
+    if t in {"mouse up", "move up", "cursor up"}:
+        pyautogui.moveRel(0, -MOUSE_MOVE_PX)
+        return "mouse_up"
+    if t in {"mouse down", "move down", "cursor down"}:
+        pyautogui.moveRel(0, MOUSE_MOVE_PX)
+        return "mouse_down"
+    if t in {"mouse left", "move left", "cursor left"}:
+        pyautogui.moveRel(-MOUSE_MOVE_PX, 0)
+        return "mouse_left"
+    if t in {"mouse right", "move right", "cursor right"}:
+        pyautogui.moveRel(MOUSE_MOVE_PX, 0)
+        return "mouse_right"
+    if t in {"scroll up", "scroll top"}:
+        _smooth_scroll(MOUSE_SCROLL_CLICKS)
+        return "scroll_up"
+    if t in {"scroll down", "scroll bottom"}:
+        _smooth_scroll(-MOUSE_SCROLL_CLICKS)
+        return "scroll_down"
+    if t in {"click", "left click", "mouse click"}:
+        pyautogui.click()
+        return "click"
+    if t in {"double click", "double"}:
+        pyautogui.doubleClick()
+        return "double_click"
+    if t in {"right click", "right"}:
+        pyautogui.rightClick()
+        return "right_click"
+    return None
 
 
 def close_active_tab() -> bool:
@@ -203,3 +277,4 @@ def switch_to_previous_window() -> bool:
         return True
     except Exception:
         return False
+
