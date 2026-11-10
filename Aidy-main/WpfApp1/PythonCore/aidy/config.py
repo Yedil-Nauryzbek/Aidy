@@ -1,152 +1,37 @@
-﻿API_URL = "http://127.0.0.1:8008/predict"
+API_URL = "http://127.0.0.1:8008/predict"
 
+# "Hey" starts a bounded command window; it never performs an action by itself.
+# Name spellings reflect the English transcripts of spoken "Aidy" / "Эйди".
+# Ordinary numbers, partial recognition, and unrelated greetings cannot activate.
 WAKE_KEYWORDS = {
-    "aidy",
-    "aidy assistant",
-    "aidy ai",
-    "aidy assitant",
-    "aidi assistant",
-    "ady",
-    "adi",
-    "aidi",
-    "aidyy",
-    "aidyy assistant",
-    "eidy",
-    "edy",
-    "edi",
-    "aiddy",
-    "a i d y",
-    "a d i",
-    "a d y",
-    "ai di",
-    "ay dee",
-    "эй ди",
-    "hey aidy",
-    "hey ady",
-    "hey aidi",
-    "hey adi",
-    "hey aidi assistant",
-    "hey eidy",
-    "hey edy",
-    "hey edi",
-    "hi aidy",
-    "hi ady",
-    "hi eidy",
-    "hey assistant",
-    "hello assistant",
-    "hello aidy",
-    "hello ady",
-    "hello eidy",
-    "yo aidy",
-    "ok ady",
-    "ok aidi",
-    "ok aidy",
-    "okay aidy",
-    "okay ady",
-    "okay aidi",
-    "okay assistant",
-    "eddie",
-    "hey eddie",
-    "ok eddie",
-    "okay eddie",
-    "eighty",
-    "hey eighty",
-    "ok eighty",
-    "a d",
-    "id",
-    "эйди",
-    "эйди ассистент",
-    "эйди помощник",
-    "эй ди",
-    "эди",
-    "эйди",
-    "эйдии",
-    "хей эйди",
-    "хэй эйди",
-    "привет эйди",
-    "эйди слушай",
+    "hey", "hey i do",
+    "aidy", "aidi", "ady", "eidy",
+    "hey aidy", "hey aidi", "hey ady", "hey eidy", "hey eddie", "hey addie",
+    "hello aidy", "hello aidi", "hi aidy", "hi aidi",
+    "ok aidy", "okay aidy", "okay aidi", "yo aidy",
+    "aidy assistant", "aidi assistant", "hey assistant", "hello assistant", "hey eighty", "hey 80",
+    "okay assistant", "a i d y", "ay dee",
 }
+_AIDY_NAMES = {"aidy", "aidi", "ady", "eidy", "eddie", "eddy", "addie", "adie", "aidee",
+               "ay dee", "a dee", "a d", "эйди"}
+WAKE_KEYWORDS |= _AIDY_NAMES
+WAKE_KEYWORDS |= {f"{prefix} {name}" for prefix in ("hey", "hi", "hello", "ok", "okay", "yo")
+                  for name in _AIDY_NAMES}
+WAKE_KEYWORDS |= {f"{prefix} {name}" for prefix in ("hey", "hi", "hello", "ok", "okay")
+                  for name in ("80", "eighty", "ad")}
 
-WAKE_FUZZY_ALIASES = {
-    "well im",
-    "while im",
-    "will im",
-    "well im up",
-    "while im up",
-    "will im up",
-    "willem",
-    "william",
-    "ady",
-    "aidy",
-    "aidi",
-    "eidy",
-    "edi",
-    "addy",
-    "edy",
-    "эйди",
-    "эди",
-}
 
 def is_wake_phrase(text: str) -> bool:
-    t = (text or "").lower().strip()
-    t = " ".join(t.split())
-    if len(t) < 3:
-        return False
-
-    strong_single_wake = {
-        "aidy",
-        "ady",
-        "adi",
-        "aidi",
-        "aidyy",
-        "eidy",
-        "edy",
-        "edi",
-        "aiddy",
-        "eddie",
-        "eighty",
-        "эйди",
-        "эди",
-        "эйди",
-    }
-    greetings = {"hey", "hello", "ok", "okay", "hi", "хей", "хэй"}
-
-    if t in WAKE_KEYWORDS:
-        if " " not in t and t not in strong_single_wake:
-            return False
-        return True
-
-    compact = t.replace(" ", "")
-    for w in WAKE_KEYWORDS:
-        wc = w.replace(" ", "")
-        if wc and compact == wc:
-            if " " not in w and w not in strong_single_wake:
-                return False
-            return True
-
-    words = t.split()
-    if len(words) >= 2 and words[0] in greetings and words[1] in strong_single_wake:
-        return True
-
-    if len(words) == 1 and words[0] in strong_single_wake:
-        return True
-
-    for w in WAKE_KEYWORDS:
-        if " " in w and w in t:
-            return True
-
-    return False
+    from .activation import match_wake
+    return match_wake(text, WAKE_KEYWORDS)[0]
 
 
 SAMPLE_RATE = 16000
-CHUNK_SAMPLES = 800
-WAKE_CHUNK_SAMPLES = 400
-WAKE_DETECT_PARTIAL = True
-WAKE_REPLY_DEAFEN_MS = 220
-FRAME_MS = 250
-VAD_START_THRESHOLD = 140
+CHUNK_SAMPLES = 320
 VAD_SILENCE_MS = 700
-VAD_MIN_SPEECH_MS = 140
+VAD_MIN_SPEECH_MS = 200
+WAKE_SILENCE_MS = 120
+WAKE_PREVIEW_SILENCE_MS = 40
 
 TIMER_MAX_SECONDS = 12 * 60 * 60
 TIMER_START_PHRASES = {
@@ -369,7 +254,9 @@ UNDO_ALL_PHRASES = {
 
 WINDOW_SWITCH_LEFT = {"left", "previous", "back"}
 WINDOW_SWITCH_RIGHT = {"right", "next", "forward"}
-WINDOW_SWITCH_DONE = {"done", "select", "choose", "ok"}
+# Whisper can hear a short "done" as "down". This alias is scoped to the
+# Alt-Tab dialogue; it must not change ordinary commands such as volume down.
+WINDOW_SWITCH_DONE = {"done", "down", "select", "choose", "ok", "finished", "finish", "completed", "okay"}
 WINDOW_SWITCH_CANCEL = {"cancel", "stop", "exit"}
 WINDOW_SWITCH_GRAMMAR = sorted(
     WINDOW_SWITCH_LEFT | WINDOW_SWITCH_RIGHT | WINDOW_SWITCH_DONE | WINDOW_SWITCH_CANCEL
@@ -482,4 +369,91 @@ VOICE_RESPONSES = {
     "switch window": "Switching window",
     "open app": "Opening application",
     "close app": "Closing application",
+}
+
+MOUSE_COMMAND_PHRASES = {
+    "mouse up", "mouse down", "mouse left", "mouse right",
+    "move up", "move down", "move left", "move right",
+    "cursor up", "cursor down", "cursor left", "cursor right",
+    "scroll up", "scroll down", "scroll top", "scroll bottom",
+    "click", "left click", "mouse click",
+    "double click", "double",
+    "right click", "right",
+}
+
+CLOSE_EVERYTHING_PHRASES = {
+    "close everything", "close all", "close all apps", "close all applications",
+    "close everything please",
+}
+
+LOCAL_MODE_ON_PHRASES = {
+    "local mode",
+    "local mode on",
+    "enable local mode",
+    "turn on local mode",
+    "start local mode",
+    "local mod",
+    "local mold",
+    "locale mode",
+}
+
+LOCAL_MODE_OFF_PHRASES = {
+    "local mode off",
+    "disable local mode",
+    "turn off local mode",
+    "stop local mode",
+    "exit local mode",
+}
+
+CUSTOM_MODE_ON_PHRASES = {
+    "custom mode",
+    "custom mode on",
+    "enable custom mode",
+    "turn on custom mode",
+    "start custom mode",
+    "custom mod",
+    "custom mold",
+    "custom mode please",
+    # synonyms
+    "personal mode",
+    "personal mode on",
+    "enable personal mode",
+    "turn on personal mode",
+    "start personal mode",
+    "local mode",
+    "local mode on",
+    "enable local mode",
+    "turn on local mode",
+    "start local mode",
+    "my mode",
+    "my mode on",
+    "start my mode",
+    "quick mode",
+    "quick mode on",
+    "start quick mode",
+}
+
+CUSTOM_MODE_OFF_PHRASES = {
+    "custom mode off",
+    "disable custom mode",
+    "turn off custom mode",
+    "stop custom mode",
+    "exit custom mode",
+    # synonyms
+    "personal mode off",
+    "disable personal mode",
+    "turn off personal mode",
+    "stop personal mode",
+    "exit personal mode",
+    "local mode off",
+    "disable local mode",
+    "turn off local mode",
+    "stop local mode",
+    "exit local mode",
+    "my mode off",
+    "stop my mode",
+    "exit my mode",
+    "quick mode off",
+    "stop quick mode",
+    "exit quick mode",
 }

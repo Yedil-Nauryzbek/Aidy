@@ -4,13 +4,25 @@ from datetime import datetime
 
 UI_MODE = "--ui" in sys.argv
 
+_last_ui_state = None
+
 def ui_state(name: str):
+    global _last_ui_state
+    if name == _last_ui_state:
+        return
+    _last_ui_state = name
     if UI_MODE:
         print(f"STATE:{name}", flush=True)
 
 def ui_command(text: str):
     if UI_MODE:
         print(f"COMMAND:{text}", flush=True)
+
+
+def ui_audio_level(level: float):
+    # Scalar amplitude only; never send or persist microphone samples.
+    if UI_MODE:
+        print(f"AUDIO_LEVEL:{level:.3f}", flush=True)
 
 def ui_timer(event: str, remaining_seconds: int, total_seconds: int):
     if UI_MODE:

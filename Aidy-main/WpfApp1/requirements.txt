@@ -1,0 +1,22 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+# Windows, Python 3.10-3.12. Verified with Python 3.10 x64.
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+webrtcvad-wheels==2.0.14.post1
+numpy==2.2.6
+PyAudio==0.2.14
+pyttsx3==2.99
+PyAutoGUI==0.9.54
+requests==2.34.2
+fastapi==0.162.0
+uvicorn==0.54.0
+joblib==1.6.0
+scikit-learn==1.7.2
+
+# Voice ID: keep the supported TorchAudio/SpeechBrain combination.
+torch==2.8.0+cpu
+torchaudio==2.8.0+cpu
+speechbrain==1.0.3
+resemblyzer==0.1.4
+huggingface_hub==0.36.0
+scipy==1.15.3

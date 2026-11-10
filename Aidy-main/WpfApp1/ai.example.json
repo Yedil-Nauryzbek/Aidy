@@ -1,0 +1,15 @@
+{
+  "mode": "original",
+  "provider": "google",
+  "model": "gemini-3.5-flash-lite",
+  "timeout_seconds": 8,
+  "max_attempts": 2,
+  "agent_enabled": true,
+  "task_timeout_seconds": 90,
+  "max_actions": 20,
+  "max_model_calls": 12,
+  "max_observation_retries": 1,
+  "max_context_chars": 18000,
+  "writing_timeout_seconds": 25,
+  "max_plan_retries": 2
+}
