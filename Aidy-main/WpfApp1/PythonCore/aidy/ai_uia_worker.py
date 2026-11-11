@@ -290,7 +290,10 @@ class Automation:
                 _fields_ = [('type', wintypes.DWORD), ('data', UNION)]
             U.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
             expected = ''
-            chunk_size = 1 if element.CurrentControlType == 50030 else 24
+            # A common-dialog filename edit autocompletes between bursts. Send
+            # its complete bounded path as one real input burst, then read back
+            # the entire value before any Save. XAML documents keep prefix checks.
+            chunk_size = max(1,len(text)) if element.CurrentControlType == 50004 and element.CurrentAutomationId == '1001' else 1 if element.CurrentControlType == 50030 else 24
             normalized = text.replace('\r\n', '\n').replace('\r', '\n')
             for offset in range(0, len(normalized), chunk_size):
                 self.check(window, True)
@@ -338,6 +341,29 @@ class Automation:
             time.sleep(.025)
         raise AIError('Text was sent, but readback did not match. It will not be retried.')
 
+    def set_filename(self, window, field, text):
+        """Set only the observed common-dialog filename Edit, with readback.
+
+        Real input commits the dialog's filename model. ValuePattern/WM_SETTEXT
+        can change the visible edit while leaving the dialog's chosen name stale.
+        """
+        if field.CurrentControlType != 50004 or field.CurrentAutomationId != '1001':
+            raise AIError('Select the exact Save As filename field.')
+        self.check(window, True)
+        field.SetFocus()
+        if not self.client.CompareElements(self.client.GetFocusedElement(), field):
+            raise AIError('The filename field did not receive focus.')
+        self.effect()
+        self.set_text(window, field, text)
+        self.keys(window, 'tab')
+        end = time.monotonic()+.7
+        while time.monotonic()<end:
+            self.check(window, True)
+            if self.text(field, len(text)+2) == text:
+                return
+            time.sleep(.02)
+        raise AIError('The filename did not match the requested path. No Save was sent.')
+
     def run(self, request):
         self.request_id = request.get('id')
         self.effect_started = False
@@ -381,6 +407,7 @@ class Automation:
             self.check(window, True)
             self.invoke(item, 'invoke')
             end = time.monotonic() + 3
+            pending_created = None
             while time.monotonic() < end:
                 candidates = []
                 win32gui.EnumWindows(lambda hwnd, _: candidates.append(hwnd) if hwnd not in previous
@@ -389,13 +416,18 @@ class Automation:
                 if len(candidates) == 1:
                     hwnd = candidates[0]
                     created = dict(hwnd=hwnd, pid=window['pid'], process='notepad.exe', title=win32gui.GetWindowText(hwnd))
-                    self.focus(created)
+                    if pending_created is None:
+                        self.focus(created)
+                        pending_created = created
+                    else:
+                        self.check(created, True)
                     tree = self.snapshot(created)
                     editors = [e for e in tree['elements'] if e['control'] == 50030]
                     if len(editors) == 1 and not editors[0]['value'].strip():
                         return dict(status='verified', message='New document created.', window=created, interface=tree)
-                    raise AIError('The new window was not empty. Existing text was preserved.')
                 time.sleep(.025)
+            if pending_created is not None:
+                raise AIError('The new window did not expose one empty editor. Existing text was preserved.')
             raise AIError('A fresh Notepad window did not appear. No text was inserted.')
         if operation == 'observe':
             return self.snapshot(window)
@@ -415,7 +447,7 @@ class Automation:
             value = request['path']
             if Path(value).exists():
                 raise AIError('The output path already exists. No overwrite was attempted.')
-            self.set_text(window, field, value)
+            self.set_filename(window, field, value)
             # Leave the edit by actual UIA focus so common-dialog state commits.
             button.SetFocus()
             self.check(window, True)

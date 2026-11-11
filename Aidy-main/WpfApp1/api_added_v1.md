@@ -22,13 +22,16 @@ Regular explicitly requested Windows shutdown commands retain their confirmation
 
 ## Validation
 
-- `Run-AidyTests.ps1`: 443 tests passed.
+- `Run-AidyTests.ps1`: 459 tests passed.
 - `dotnet build WpfApp1.csproj -c Release --no-restore`: passed, zero warnings/errors.
 - Real API and desktop checks verified Recycle Bin opening and Calculator
   `2 + 3 * 4 = 14`.
-- The new end-to-end Notepad create/edit/save smoke test has not passed yet:
-  the tested cloud planning requests failed or timed out before execution.
-  Do not treat arbitrary multi-step desktop tasks as universally reliable.
+- Real API and desktop checks verified new-document creation, append, replace,
+  exact Save As readback, quoted/multiline Unicode text and a Cyrillic output
+  filename. A second workflow verified find/select, read and saving the same text.
+  Each complete workflow used one model request. Read answers are retained when
+  later goals save a document. These checks do not imply that every arbitrary
+  multi-step task or accessibility provider is supported.
 - Emptying the user's Recycle Bin was not performed during validation.
 
 ## Run

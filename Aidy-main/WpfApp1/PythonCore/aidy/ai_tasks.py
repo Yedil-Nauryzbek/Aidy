@@ -22,7 +22,7 @@ def task_schema(registry, names):
                     description=dict(type='string'),
                     requires_followup=dict(type='boolean'),required_tools=dict(type='array',items=dict(type='string',enum=sorted(names))),
                     criteria=dict(type='array',items=dict(type='object',additionalProperties=False,
-                        required=['kind','target','source_goal'],properties=dict(kind=dict(type='string',enum=['app_open','document_written','file_saved','file_read','tool_verified']),target=dict(type='string'),source_goal=dict(type='string')))),
+                        required=['kind','target','source_goal'],properties=dict(kind=dict(type='string',enum=['app_open','document_written','file_saved','file_read','tool_verified']),target=dict(type='string'),source_goal=dict(type='string',enum=['']+['g'+str(i) for i in range(1,9)])))),
                     steps=action_list)))))
 
 

@@ -522,7 +522,15 @@ class AIEngine:
         status='dispatched' if any(o['status']!='verified' for o in outcomes) else 'verified'
         app_actions = {'open_app','close_app','close_window','close_everything'}
         brief = all(g['required_tools'] and set(g['required_tools']) <= app_actions for g,_ in groups)
-        return Result(status,f'{len(outcomes)} of {len(groups)} goals '+('completed.' if status=='verified' else 'requested; some final states are unverified.'),
+        def query(step):
+            name,args=step['tool'],step['arguments']
+            return name in {'notepad_action','file_action','ui_action'} and args.get('operation')=='read'
+        answers=[o['message'] for o,(_,p) in zip(outcomes,groups) if o['status']=='verified'
+                 and any(query(s) for s in p['steps']) and all(query(s) or s['tool']=='observe_desktop' for s in p['steps'])]
+        message=f'{len(outcomes)} of {len(groups)} goals '+('completed.' if status=='verified' else 'requested; some final states are unverified.')
+        if answers:
+            message+='\n'+'\n'.join(answers)
+        return Result(status,message,
                       data=dict(goals=outcomes), spoken_message=('Done.' if status=='verified' else 'Requests sent.') if brief else '')
 
     def _run_agent_goal(self, text, identity, request_id, plan, goal=None):
@@ -569,6 +577,7 @@ class AIEngine:
                     return Result('dispatched', 'Action sent; the final result is unverified.')
                 self.pending_until = time.monotonic() + 8
                 queries = [r for r in actions if r['step']['tool'] == 'file_action' and r['step']['arguments']['operation'] == 'read'
+                           or r['step']['tool'] == 'notepad_action' and r['step']['arguments']['operation'] == 'read'
                            or r['step']['tool'] == 'ui_action' and r['step']['arguments']['operation'] == 'read'
                            or r['step']['tool'] == 'browser_action' and r['step']['arguments']['operation'] in {'tabs', 'read_page'}]
                 mutations = [r for r in actions if r['step']['tool'] != 'observe_desktop']
@@ -587,7 +596,7 @@ class AIEngine:
             if step['tool'] not in allowed:
                 raise AIError('This action cannot be mixed into an observed desktop task.')
             read_only = (step['tool'] == 'observe_desktop' or
-                         step['tool'] in {'ui_action', 'file_action'} and step['arguments']['operation'] == 'read' or
+                         step['tool'] in {'ui_action', 'file_action', 'notepad_action'} and step['arguments']['operation'] == 'read' or
                          step['tool'] == 'browser_action' and step['arguments']['operation'] in {'tabs', 'read_page'})
             if uncertain and not read_only:
                 raise AIError('The previous action has an unverified outcome. Remaining input stopped; check the application before retrying.')
@@ -613,6 +622,8 @@ class AIEngine:
                 if step['arguments'].get('window'):
                     selected_window = step['arguments']['window']
             except AIPlanError as exc:
+                if not read_only:
+                    consumed_mutations.discard(signature)  # preparation sent no input
                 self.registry.plan_feedback = str(exc)
                 plan = self._interpret_once(text, min(self.task_deadline, time.monotonic() +
                     getattr(self.provider, 'planning_timeout', lambda t, r: config.timeout_seconds)(text, self.registry)))
@@ -623,6 +634,8 @@ class AIEngine:
             try:
                 result = self._dispatch(step, identity, action_id, self.task_deadline)
             except AIPlanError as exc:
+                if not read_only:
+                    consumed_mutations.discard(signature)  # executor explicitly rejected before action
                 self.refresh_agent(selected_window)
                 self.registry.plan_feedback = str(exc)
                 plan = self._interpret_once(text, min(self.task_deadline, time.monotonic() +

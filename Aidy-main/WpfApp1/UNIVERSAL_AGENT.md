@@ -26,8 +26,11 @@ Original mode and the existing voice/audio/identity pipeline remain available.
   stop the task. Limited keys, element-centered hit-tested clicks and bounded
   scrolling are available. No visual fallback is implemented.
 - Ordinary edit controls use ValuePattern. XAML documents and Save As filename
-  edits use focused Unicode input with prefix readback: some providers expose
-  ValuePattern without committing application state. Terminal input is blocked.
+  edits use focused Unicode input: some providers expose ValuePattern without
+  committing application state. Documents retain prefix readback. Filename edits
+  receive one complete bounded input burst to avoid shell autocompletion between
+  chunks, then an actual Tab to commit focus, exact path readback, and Save.
+  Terminal input is blocked.
 - `document_write` creates a fresh Notepad or Word document and inserts a complete
   generated draft. Notepad uses its real New window command and an undoable native
   RichEdit insertion, checked through UIA. Word uses a separate registered COM
@@ -49,6 +52,22 @@ Original mode and the existing voice/audio/identity pipeline remain available.
   launch; create a new document/window before entering a new draft.
 
 ## Planning, authority and limits
+
+Explicit Notepad read/find/edit/save workflows without a requested word count use
+a compact typed action array. Text and paths are real JSON fields rather than
+JSON objects nested inside strings. The model selects every action and its order;
+the local mapper validates all actions before executing any of them. Window
+references are constrained to observed Notepad IDs or exact supported aliases.
+Saving binds to the latest verified creation/read/edit goal and its actual text.
+Mixed-app tasks return to the full planner, which also exposes `save_document`
+during initial planning. A preparation failure or explicit pre-action rejection
+does not consume an action that never ran; uncertain mutations remain nonretryable.
+
+On 2026-11-11, real API/Windows tests passed create/append/replace/save, multiline
+Unicode and quoted text with a Cyrillic filename, and create/find/read/save. Each
+workflow used one model request and exact file-content readback. The automated
+suite passed 459 tests. No live microphone, Voice ID or arbitrary-app guarantee
+is inferred from these text-driven desktop checks.
 
 Every accepted API task still goes to Google. A data-only worker returns a plan;
 the assistant thread validates typed arguments, rechecks role/identity, obtains

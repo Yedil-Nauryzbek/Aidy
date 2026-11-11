@@ -329,7 +329,8 @@ def notepad(automation, window, args):
         raise AIError('This document exceeds the supported 16000-character editing limit.')
     action=args['operation']
     if action=='read':
-        return dict(status='verified',message=text or '(Empty document)',data=dict(document_text=text))
+        return dict(status='verified',message=text or '(Empty document)',document_text=text,
+                    data=dict(characters=len(text)))
     query=args['query']
     if action in {'find','replace'} and not query:
         raise AIError('Provide the exact text to find.')

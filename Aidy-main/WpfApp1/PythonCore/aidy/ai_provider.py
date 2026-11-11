@@ -369,7 +369,7 @@ class GeminiProvider:
         return fresh
 
     def planning_timeout(self, text, registry):
-        writing = re.search(r'\b(write|writing|right|essay|draft|compose|generate|story|letter|words|text)\b', text, re.I)
+        writing = re.search(r'\b(write|writing|right|essay|draft|compose|generate|story|letter|words|text|append|replace)\b', text, re.I)
         if not writing:
             # Full typed task plans routinely take longer than a single app ID.
             # Keep the short app contract fast without cutting general plans off
@@ -388,7 +388,7 @@ class GeminiProvider:
     def available_tools(self, registry):
         available = [name for name in TOOLS if self.config.agent_enabled or name not in AGENT_TOOLS]
         if not registry.agent_mode:
-            available = [name for name in available if name not in {'task_complete', 'ui_action', 'key_input', 'mouse_input', 'save_document'}]
+            available = [name for name in available if name not in {'task_complete', 'ui_action', 'key_input', 'mouse_input'}]
         elif not registry.desktop_state.get('interface'):
             available = [name for name in available if name not in {'ui_action', 'key_input', 'mouse_input'}]
         return available
@@ -490,6 +490,11 @@ class GeminiProvider:
         return fit_near_length(text.rstrip()+'\n\n'+value.strip() if short else value, count)
 
     def interpret(self, text, history, registry, cancel):
+        from .ai_notepad_profile import eligible as notepad_workflow, interpret as interpret_notepad
+        if self.config.agent_enabled and notepad_workflow(text, registry):
+            selected = interpret_notepad(self, text, registry, cancel)
+            if selected is not None:
+                return selected
         from .ai_system_profile import target, interpret as interpret_system
         system_tool = target(text, registry) if self.config.agent_enabled else None
         if system_tool:
