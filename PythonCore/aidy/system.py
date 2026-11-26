@@ -1,0 +1,356 @@
+from __future__ import annotations
+import ctypes
+import ctypes.wintypes
+import subprocess
+import re
+import time
+from dataclasses import dataclass
+
+import pyautogui
+import pythoncom
+import win32com.client
+
+try:
+    from ctypes import POINTER, cast
+    from comtypes import CLSCTX_ALL
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    PYCaw_OK = True
+except Exception:
+    PYCaw_OK = False
+
+
+def parse_first_int(text: str) -> int | None:
+    m = re.search(r"\b(\d{1,3})\b", text or "")
+    if not m:
+        return None
+    v = int(m.group(1))
+    return max(0, min(100, v))
+
+
+def get_volume_percent() -> tuple[int | None, bool | None]:
+    """(percent, muted) of the default speakers; (None, None) when unreadable."""
+    from _ctypes import COMError
+    try:
+        from .audio_endpoint import get_master
+        return get_master()
+    except (OSError, ImportError, ValueError, COMError):
+        return None, None
+
+
+class _PowerStatus(ctypes.Structure):
+    _fields_ = [('ACLineStatus', ctypes.c_ubyte), ('BatteryFlag', ctypes.c_ubyte),
+                ('BatteryLifePercent', ctypes.c_ubyte), ('SystemStatusFlag', ctypes.c_ubyte),
+                ('BatteryLifeTime', ctypes.wintypes.DWORD), ('BatteryFullLifeTime', ctypes.wintypes.DWORD)]
+
+
+def _power_status():
+    """Raw (ACLineStatus, BatteryFlag, BatteryLifePercent) from GetSystemPowerStatus."""
+    status = _PowerStatus()
+    if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+        return 255, 255, 255
+    return status.ACLineStatus, status.BatteryFlag, status.BatteryLifePercent
+
+
+def battery_status() -> dict:
+    ac, flag, percent = _power_status()
+    if flag != 255 and flag & 128:
+        return {'percent': None, 'charging': None, 'has_battery': False}
+    return {'percent': None if percent == 255 else int(percent),
+            'charging': bool(flag & 8) if flag != 255 else ac == 1, 'has_battery': True}
+
+
+def set_volume_percent(p: int) -> bool:
+    if not PYCaw_OK:
+        # pycaw is not a project dependency; the same Core Audio call via comtypes.
+        from _ctypes import COMError
+        try:
+            from .audio_endpoint import set_master
+            set_master(p)
+            return True
+        except (OSError, ImportError, ValueError, COMError):
+            return False
+    try:
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume = cast(interface, POINTER(IAudioEndpointVolume))
+        volume.SetMasterVolumeLevelScalar(p / 100.0, None)
+        return True
+    except Exception:
+        return False
+
+
+def volume_steps(up: bool, steps: int, presses_per_step: int = 2):
+    key = "volumeup" if up else "volumedown"
+    total_presses = max(1, steps) * max(1, presses_per_step)
+    # Avoid PyAutoGUI's 100 ms post-call pause for every individual press.
+    pyautogui.press(key, presses=total_presses, interval=0.01, _pause=False)
+
+
+@dataclass(frozen=True)
+class BrightnessResult:
+    ok: bool
+    message: str
+    not_executed: bool = False
+    levels: dict | None = None
+
+
+def adjust_brightness(up: bool, steps: int, step_percent: int = 10):
+    safe_steps = max(1, min(10, int(steps)))
+    delta = safe_steps * max(1, step_percent)
+    if not up:
+        delta = -delta
+    service = monitor = parameters = result = None
+    attempted = False
+    pythoncom.CoInitialize()
+    try:
+        # Call the same Windows brightness provider in-process, with no shell
+        # startup or one-second brightness transition on each request.
+        service = win32com.client.Dispatch("WbemScripting.SWbemLocator").ConnectServer('.', r'root\WMI')
+        levels = {str(m.InstanceName): int(m.CurrentBrightness) for m in
+                  service.ExecQuery('SELECT * FROM WmiMonitorBrightness WHERE Active=TRUE')}
+        targets = {}
+        for monitor in service.ExecQuery('SELECT * FROM WmiMonitorBrightnessMethods WHERE Active=TRUE'):
+            current = levels.get(str(monitor.InstanceName))
+            if current is None:
+                continue
+            target = max(0, min(100, current + delta))
+            targets[str(monitor.InstanceName)] = target
+            if target == current:
+                continue
+            parameters = monitor.Methods_('WmiSetBrightness').InParameters.SpawnInstance_()
+            parameters.Properties_('Timeout').Value = 0
+            parameters.Properties_('Brightness').Value = target
+            attempted = True
+            result = monitor.ExecMethod_('WmiSetBrightness', parameters)
+            # Some working Windows WMI adapters return no SWbem output object.
+            # Never mistake that for an unsupported display; verify readback.
+            if result is not None and int(result.Properties_('ReturnValue').Value) != 0:
+                return BrightnessResult(False, 'Windows rejected the brightness adjustment.')
+        if not targets:
+            return BrightnessResult(False, 'This display exposes no Windows brightness control.', True)
+        deadline = time.monotonic() + .35
+        while True:
+            actual = {str(m.InstanceName):int(m.CurrentBrightness) for m in
+                      service.ExecQuery('SELECT * FROM WmiMonitorBrightness WHERE Active=TRUE')}
+            if all(actual.get(name)==value for name,value in targets.items()):
+                message = ('Brightness adjusted.' if attempted else
+                           'Brightness is already at its limit.')
+                return BrightnessResult(True,message,levels=actual)
+            if time.monotonic() >= deadline:
+                return BrightnessResult(False,'The brightness change could not be verified.')
+            time.sleep(.02)
+    except Exception:
+        return BrightnessResult(False,'Windows brightness control is unavailable.',not attempted)
+    finally:
+        # Release apartment-owned objects before releasing the COM apartment.
+        service = monitor = parameters = result = None
+        pythoncom.CoUninitialize()
+
+
+def brightness_steps(up: bool, steps: int, step_percent: int = 10):
+    return adjust_brightness(up,steps,step_percent).ok
+
+
+def show_desktop():
+    try:
+        VK_LWIN = 0x5B
+        KEYEVENTF_KEYUP = 0x0002
+        ctypes.windll.user32.keybd_event(VK_LWIN, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(0x44, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(0x44, 0, KEYEVENTF_KEYUP, 0)
+        ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+        return True
+    except Exception:
+        pass
+
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "(New-Object -ComObject Shell.Application).MinimizeAll()"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
+        )
+        return True
+    except Exception:
+        pass
+
+    try:
+        pyautogui.hotkey("win", "d")
+        return True
+    except Exception:
+        return False
+
+
+def open_cmd_new_console(keep_open: bool = True, cmdline: str | None = None):
+    args = ["cmd.exe", "/K" if keep_open else "/C"]
+    if cmdline:
+        args.append(cmdline)
+    subprocess.Popen(
+        args,
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+
+def run_powershell_hidden(ps_command: str):
+    subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_command],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False
+    )
+
+
+def take_screenshot():
+    try:
+        VK_SNAPSHOT = 0x2C
+        VK_LWIN = 0x5B
+        KEYEVENTF_KEYUP = 0x0002
+
+        ctypes.windll.user32.keybd_event(VK_LWIN, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(VK_SNAPSHOT, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(VK_SNAPSHOT, 0, KEYEVENTF_KEYUP, 0)
+        ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+        return True
+    except Exception:
+        pass
+
+    try:
+        pyautogui.hotkey("win", "prtsc")
+        return True
+    except Exception:
+        return False
+
+
+def open_task_manager():
+    try:
+        subprocess.Popen(
+            ["taskmgr.exe"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NEW_CONSOLE
+        )
+        return True
+    except Exception:
+        pass
+
+    try:
+        pyautogui.hotkey("ctrl", "shift", "esc")
+        return True
+    except Exception:
+        return False
+
+
+def _get_process_name_by_pid(pid: int) -> str | None:
+    """Get process executable name via kernel32 (no PowerShell subprocess)."""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    MAX_PATH = 260
+    try:
+        kernel32 = ctypes.windll.kernel32
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return None
+        try:
+            buf = ctypes.create_unicode_buffer(MAX_PATH)
+            size = ctypes.wintypes.DWORD(MAX_PATH)
+            ok = kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+            if ok and buf.value:
+                import os as _os
+                return _os.path.splitext(_os.path.basename(buf.value))[0]
+            return None
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:
+        return None
+
+
+def get_active_window_info() -> dict | None:
+    try:
+        user32 = ctypes.windll.user32
+
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+
+        length = user32.GetWindowTextLengthW(hwnd)
+        title_buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, title_buf, length + 1)
+        title = title_buf.value or ""
+
+        pid = ctypes.c_ulong(0)
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        pid_val = int(pid.value)
+        if pid_val <= 0:
+            return None
+
+        proc = _get_process_name_by_pid(pid_val)
+        if not proc:
+            return None
+
+        return {"pid": pid_val, "process": proc, "title": title}
+    except Exception:
+        return None
+
+
+MOUSE_MOVE_PX = 500
+MOUSE_SCROLL_CLICKS = 150
+MOUSE_SCROLL_STEP = 15
+MOUSE_SCROLL_DELAY = 0.002
+
+def _smooth_scroll(clicks: int):
+    direction = 1 if clicks > 0 else -1
+    remaining = abs(clicks)
+    while remaining > 0:
+        batch = min(MOUSE_SCROLL_STEP, remaining)
+        pyautogui.scroll(batch * direction)
+        remaining -= batch
+        if remaining > 0:
+            time.sleep(MOUSE_SCROLL_DELAY)
+
+def execute_mouse_command(text: str) -> str | None:
+    t = " ".join((text or "").strip().lower().split())
+    if t in {"mouse up", "move up", "cursor up"}:
+        pyautogui.moveRel(0, -MOUSE_MOVE_PX)
+        return "mouse_up"
+    if t in {"mouse down", "move down", "cursor down"}:
+        pyautogui.moveRel(0, MOUSE_MOVE_PX)
+        return "mouse_down"
+    if t in {"mouse left", "move left", "cursor left"}:
+        pyautogui.moveRel(-MOUSE_MOVE_PX, 0)
+        return "mouse_left"
+    if t in {"mouse right", "move right", "cursor right"}:
+        pyautogui.moveRel(MOUSE_MOVE_PX, 0)
+        return "mouse_right"
+    if t in {"scroll up", "scroll top"}:
+        _smooth_scroll(MOUSE_SCROLL_CLICKS)
+        return "scroll_up"
+    if t in {"scroll down", "scroll bottom"}:
+        _smooth_scroll(-MOUSE_SCROLL_CLICKS)
+        return "scroll_down"
+    if t in {"click", "left click", "mouse click"}:
+        pyautogui.click()
+        return "click"
+    if t in {"double click", "double"}:
+        pyautogui.doubleClick()
+        return "double_click"
+    if t in {"right click", "right"}:
+        pyautogui.rightClick()
+        return "right_click"
+    return None
+
+
+def close_active_tab() -> bool:
+    try:
+        pyautogui.hotkey("ctrl", "w")
+        return True
+    except Exception:
+        return False
+
+
+def switch_to_previous_window() -> bool:
+    try:
+        pyautogui.hotkey("alt", "tab")
+        return True
+    except Exception:
+        return False
+
